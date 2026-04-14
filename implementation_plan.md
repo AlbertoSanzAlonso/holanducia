@@ -14,6 +14,7 @@ This project aims to build a high-performance real estate intelligence tool that
 - [x] Initialize project structure (`/backend`, `/scrapers`, `/docker`)
 - [x] Link to InsForge Project (`HolanducIA`)
 - [x] Create `properties` table in the cloud database.
+- [x] Initialize Git and push to [GitHub](git@github.com:AlbertoSanzAlonso/holanducia.git).
 - [ ] Create base Pydantic / TypeScript schemas for Property data.
 
 ### 2. Ingestion Layer (The "Eyes")
