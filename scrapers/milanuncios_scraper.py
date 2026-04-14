@@ -3,13 +3,22 @@ from playwright.async_api import async_playwright
 from base_scraper import BaseScraper
 import logging
 import re
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
 class MilanunciosScraper(BaseScraper):
-    def __init__(self, city: str = "madrid"):
-        base_url = f"https://www.milanuncios.com/inmobiliaria-en-{city}/?fromSearch=1"
-        super().__init__(source_name="Milanuncios", base_url=base_url)
+    def __init__(self, city: str = "madrid", settings: Optional[dict] = None):
+        max_price = settings.get("max_price") if settings else None
+        rooms = settings.get("min_rooms") if settings else None
+        
+        base_url = f"https://www.milanuncios.com/inmobiliaria-en-{city}/"
+        query_params = ["fromSearch=1"]
+        if max_price: query_params.append(f"hasta={max_price}")
+        if rooms: query_params.append(f"habitaciones={rooms}")
+        
+        base_url += "?" + "&".join(query_params)
+        super().__init__(source_name="Milanuncios", base_url=base_url, settings=settings)
 
     async def scrape(self):
         logger.info(f"Starting {self.source_name} scrape for {self.base_url}")

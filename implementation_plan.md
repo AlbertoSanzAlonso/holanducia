@@ -29,8 +29,9 @@ This project aims to build a high-performance real estate intelligence tool that
 
 ### 4. API & Storage
 - [x] InsForge PostgreSQL schema implementation (v1).
+- [x] User Settings table for dynamic configurations.
 - [x] Edge Functions for data enrichment (Catastro).
-- [x] Frontend Dashboard using InsForge SDK for real-time updates.
+- [x] Frontend Dashboard & Settings View using InsForge SDK.
 
 ## Directory Structure
 ```text

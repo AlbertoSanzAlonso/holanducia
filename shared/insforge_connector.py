@@ -33,3 +33,11 @@ class InsForgeConnector:
             )
             response.raise_for_status()
             return response.json()
+    async def get_settings(self):
+        """Fetches the latest user settings from the database"""
+        url = f"{self.oss_host}/db/user_settings?select=*&limit=1"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+            return data[0] if data else None

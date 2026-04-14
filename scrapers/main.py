@@ -13,12 +13,24 @@ logger = logging.getLogger("ScraperManager")
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 async def run_all_scrapers():
-    scrapers = [
-        MilanunciosScraper(city="madrid"),
-        MilanunciosScraper(city="barcelona"),
-        IdealistaScraper(city="madrid"),
-        IdealistaScraper(city="barcelona")
-    ]
+    from shared.insforge_connector import InsForgeConnector
+    connector = InsForgeConnector(
+        oss_host="https://s7pytj95.eu-central.insforge.app",
+        api_key="ik_0ed6e333e7a2e51c6c94939d8d8afbcf"
+    )
+    
+    settings = await connector.get_settings()
+    if not settings:
+        logger.warning("No settings found, using defaults.")
+        cities = ["madrid", "barcelona"]
+    else:
+        cities = settings.get("cities", ["madrid", "barcelona"])
+        logger.info(f"Using settings: {settings}")
+
+    scrapers = []
+    for city in cities:
+        scrapers.append(MilanunciosScraper(city=city))
+        scrapers.append(IdealistaScraper(city=city))
     
     logger.info(f"Starting execution of {len(scrapers)} scrapers...")
     tasks = [scraper.scrape() for scraper in scrapers]

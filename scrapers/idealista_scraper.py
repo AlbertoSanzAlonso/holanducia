@@ -5,13 +5,23 @@ import logging
 import re
 import random
 
+import logging
+import re
+import random
+from typing import Optional, List
+
 logger = logging.getLogger(__name__)
 
 class IdealistaScraper(BaseScraper):
-    def __init__(self, city: str = "madrid"):
-        # Idealista URLs are like: https://www.idealista.com/venta-viviendas/madrid-madrid/
+    def __init__(self, city: str = "madrid", settings: Optional[dict] = None):
+        max_price = settings.get("max_price") if settings else None
+        
+        # Idealista URLs for filtering: https://www.idealista.com/venta-viviendas/madrid-madrid/precio-max-300000/
         base_url = f"https://www.idealista.com/venta-viviendas/{city}-{city}/"
-        super().__init__(source_name="Idealista", base_url=base_url)
+        if max_price:
+            base_url += f"precio-max-{int(max_price)}/"
+            
+        super().__init__(source_name="Idealista", base_url=base_url, settings=settings)
 
     async def scrape(self):
         logger.info(f"Starting {self.source_name} scrape for {self.base_url}")

@@ -16,9 +16,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from shared.insforge_connector import InsForgeConnector
 
 class BaseScraper(ABC):
-    def __init__(self, source_name: str, base_url: str):
+    def __init__(self, source_name: str, base_url: str, settings: Optional[dict] = None):
         self.source_name = source_name
         self.base_url = base_url
+        self.settings = settings or {}
         self.results = []
         
         # Load InsForge config (Hardcoded for this phase, should use env in prod)

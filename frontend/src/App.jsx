@@ -22,10 +22,13 @@ const insforge = createClient({
   anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY
 })
 
+import SettingsView from './SettingsView'
+
 function App() {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [view, setView] = useState('dashboard') // 'dashboard' or 'settings'
 
   const fetchProperties = async () => {
     setLoading(true)
@@ -41,21 +44,23 @@ function App() {
   useEffect(() => {
     fetchProperties()
 
-    // Realtime subscription
-    const channel = insforge.database
-      .channel('properties-changes')
-      .on(
-        'postgres_changes', 
-        { event: '*', table: 'properties' }, 
-        (payload) => {
-          console.log('Realtime change received!', payload)
-          fetchProperties() // Simple refresh for now
-        }
-      )
-      .subscribe()
+    const setupRealtime = async () => {
+      try {
+        await insforge.realtime.connect()
+        insforge.realtime.on('properties-changes', (event, payload) => {
+          console.log('Real-time update:', event, payload)
+          fetchProperties()
+        })
+        await insforge.realtime.subscribe('properties-changes')
+      } catch (err) {
+        console.error('Real-time connection failed:', err)
+      }
+    }
+
+    setupRealtime()
 
     return () => {
-      insforge.database.removeChannel(channel)
+      insforge.realtime.disconnect()
     }
   }, [])
 
@@ -100,10 +105,17 @@ function App() {
             <Flame size={18} /> Oportunidades
           </button>
           <button 
-            onClick={() => setFilter('particular')}
-            className={`w-full sidebar-link ${filter === 'particular' ? 'active' : ''}`}
+            onClick={() => { setView('dashboard'); setFilter('particular'); }}
+            className={`w-full sidebar-link ${filter === 'particular' && view === 'dashboard' ? 'active' : ''}`}
           >
             <User size={18} /> Mis Blogs
+          </button>
+          <div className="border-t border-[#ffffff10] my-4 mx-8" />
+          <button 
+            onClick={() => setView('settings')}
+            className={`w-full sidebar-link ${view === 'settings' ? 'active' : ''}`}
+          >
+            <RefreshCw size={18} /> Configuración
           </button>
           <button className="w-full sidebar-link">
              <Mail size={18} /> Mensajes
@@ -147,63 +159,66 @@ function App() {
           </div>
         </div>
 
-        {/* List Section */}
-        <section className="bg-white pt-16 pb-12 px-12">
-           <div className="flex items-center justify-between mb-10 border-b border-slate-100 pb-4">
-              <h2 className="text-slate-400 font-medium flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full border-2 border-slate-300" />
-                 Recent Opportunities from Portals
-              </h2>
-           </div>
+        {view === 'dashboard' ? (
+          <section className="bg-white pt-16 pb-12 px-12">
+             <div className="flex items-center justify-between mb-10 border-b border-slate-100 pb-4">
+                <h2 className="text-slate-400 font-medium flex items-center gap-2">
+                   <div className="w-2 h-2 rounded-full border-2 border-slate-300" />
+                   Recent Opportunities from Portals
+                </h2>
+             </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-            <AnimatePresence mode="popLayout">
-              {filteredProperties.map((prop, idx) => (
-                <motion.div
-                  key={prop.id}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className="flex flex-col group cursor-pointer"
-                >
-                  <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-slate-100 shadow-sm mb-3">
-                    <img 
-                      src={prop.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000&auto=format&fit=crop'} 
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                    />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                       <button className="w-10 h-10 bg-white text-slate-900 rounded-full flex items-center justify-center hover:bg-dribbble-accent hover:text-white transition-colors">
-                          <Eye size={18} />
-                       </button>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+              <AnimatePresence mode="popLayout">
+                {filteredProperties.map((prop, idx) => (
+                  <motion.div
+                    key={prop.id}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="flex flex-col group cursor-pointer"
+                  >
+                    <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-slate-100 shadow-sm mb-3">
+                      <img 
+                        src={prop.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000&auto=format&fit=crop'} 
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                         <button className="w-10 h-10 bg-white text-slate-900 rounded-full flex items-center justify-center hover:bg-dribbble-accent hover:text-white transition-colors">
+                            <Eye size={18} />
+                         </button>
+                      </div>
+                      {prop.opportunity_score >= 80 && (
+                        <div className="absolute top-3 right-3 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded">HOT</div>
+                      )}
                     </div>
-                    {prop.opportunity_score >= 80 && (
-                      <div className="absolute top-3 right-3 bg-orange-500 text-white text-[10px] font-bold px-2 py-1 rounded">HOT</div>
-                    )}
-                  </div>
-                  <div className="flex justify-between items-start">
-                     <div className="flex flex-col">
-                        <h3 className="text-slate-900 font-semibold text-sm leading-tight line-clamp-1">{prop.title}</h3>
-                        <p className="text-slate-400 text-xs mt-1 flex items-center gap-1">
-                           <MapPin size={10} /> {prop.city}
-                        </p>
-                     </div>
-                     <div className="text-sm font-bold text-slate-900">
-                        {prop.price.toLocaleString('es-ES')}€
-                     </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-           </div>
+                    <div className="flex justify-between items-start">
+                       <div className="flex flex-col">
+                          <h3 className="text-slate-900 font-semibold text-sm leading-tight line-clamp-1">{prop.title}</h3>
+                          <p className="text-slate-400 text-xs mt-1 flex items-center gap-1">
+                             <MapPin size={10} /> {prop.city}
+                          </p>
+                       </div>
+                       <div className="text-sm font-bold text-slate-900">
+                          {prop.price.toLocaleString('es-ES')}€
+                       </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+             </div>
 
-           {/* Pagination Mockup */}
-           <div className="mt-16 flex justify-end">
-              <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-lg border border-slate-100 text-slate-400 text-sm font-medium">
-                 Next <ChevronRight size={16} />
-              </div>
-           </div>
-        </section>
+             {/* Pagination Mockup */}
+             <div className="mt-16 flex justify-end">
+                <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-lg border border-slate-100 text-slate-400 text-sm font-medium">
+                   Next <ChevronRight size={16} />
+                </div>
+             </div>
+          </section>
+        ) : (
+          <SettingsView insforge={insforge} />
+        )}
       </main>
     </div>
   )
