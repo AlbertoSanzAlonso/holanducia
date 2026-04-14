@@ -4,3 +4,4 @@ httpx
 pydantic
 beautifulsoup4
 python-dotenv
+apscheduler

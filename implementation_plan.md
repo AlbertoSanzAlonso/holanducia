@@ -15,25 +15,22 @@ This project aims to build a high-performance real estate intelligence tool that
 - [x] Link to InsForge Project (`HolanducIA`)
 - [x] Create `properties` table in the cloud database.
 - [x] Initialize Git and push to [GitHub](git@github.com:AlbertoSanzAlonso/holanducia.git).
-- [ ] Create base Pydantic / TypeScript schemas for Property data.
+- [x] Create base Pydantic / TypeScript schemas for Property data.
 
 ### 2. Ingestion Layer (The "Eyes")
-- [ ] Implement a base Scraper class.
-- [ ] Create specialized scrapers for **Idealista** and **Milanuncios** (initial 2 sources).
-- [ ] Implement a scheduler (APScheduler or Celery) to run every 15-30 mins.
+- [x] Implement a base Scraper class.
+- [x] Create specialized scrapers for **Idealista** and **Milanuncios** (initial 2 sources).
+- [x] Implement a scheduler (APScheduler) to run every 30 mins.
 
 ### 3. Intelligence Layer (The "Brain")
-- [ ] Property deduplication logic (Address/Coordinates + Catastro logic).
-- [ ] Price drop detection (Historical price tracking in TimescaleDB).
-- [ ] Basic Opportunity Scoring (v1):
-    - Price vs Zone Average.
-    - Owner type (Individual vs Agency).
-    - Price history trend.
+- [x] Property deduplication logic (Database unique constraint implemented).
+- [x] Price drop detection (Automated via DB triggers & Price History).
+- [x] Basic Opportunity Scoring (v1 implemented in Edge Function).
 
 ### 4. API & Storage
 - [x] InsForge PostgreSQL schema implementation (v1).
-- [ ] Edge Functions for data enrichment (Catastro).
-- [ ] Frontend Dashboard using InsForge SDK for real-time updates.
+- [x] Edge Functions for data enrichment (Catastro).
+- [x] Frontend Dashboard using InsForge SDK for real-time updates.
 
 ## Directory Structure
 ```text

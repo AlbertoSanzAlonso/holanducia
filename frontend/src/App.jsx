@@ -40,6 +40,23 @@ function App() {
 
   useEffect(() => {
     fetchProperties()
+
+    // Realtime subscription
+    const channel = insforge.database
+      .channel('properties-changes')
+      .on(
+        'postgres_changes', 
+        { event: '*', table: 'properties' }, 
+        (payload) => {
+          console.log('Realtime change received!', payload)
+          fetchProperties() // Simple refresh for now
+        }
+      )
+      .subscribe()
+
+    return () => {
+      insforge.database.removeChannel(channel)
+    }
   }, [])
 
   const filteredProperties = properties.filter(p => {

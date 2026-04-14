@@ -12,6 +12,9 @@ class PropertyBase(BaseModel):
     location_raw: Optional[str] = None
     city: Optional[str] = None
     neighborhood: Optional[str] = None
+    address: Optional[str] = None
+    coordinates: Optional[Dict[str, float]] = None
+    catastro_ref: Optional[str] = None
     rooms: Optional[int] = None
     bathrooms: Optional[int] = None
     size_m2: Optional[float] = None
