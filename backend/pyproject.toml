@@ -1,0 +1,23 @@
+[project]
+name = "inmobiliaria_backend"
+version = "0.1.0"
+description = "Backend for Real Estate AI Opportunity Finder"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy[asyncio]",
+    "asyncpg",
+    "pydantic-settings",
+    "alembic",
+    "redis",
+    "httpx",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "httpx",
+]

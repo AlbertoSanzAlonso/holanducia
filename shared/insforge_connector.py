@@ -1,0 +1,35 @@
+import httpx
+import os
+from typing import Dict, Any
+
+class InsForgeConnector:
+    def __init__(self, oss_host: str, api_key: str):
+        self.oss_host = oss_host.rstrip('/')
+        self.api_key = api_key
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+    async def upsert_property(self, property_data: Dict[str, Any]):
+        """Upserts a property to the cloud database"""
+        url = f"{self.oss_host}/db/properties"
+        # Using PostgREST upsert syntax: on_conflict=url (since url is unique)
+        headers = {**self.headers, "Prefer": "resolution=merge-duplicates"}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=property_data, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+    async def analyze_property(self, property_data: Dict[str, Any], market_avg: float):
+        """Calls the edge function to get opportunity analysis"""
+        url = f"{self.oss_host}/functions/analyze-property"
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url, 
+                json={"property": property_data, "market_avg": market_avg},
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
