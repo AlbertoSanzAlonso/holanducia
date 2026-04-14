@@ -13,8 +13,8 @@ class InsForgeConnector:
 
     async def upsert_property(self, property_data: Dict[str, Any]):
         """Upserts a property to the cloud database"""
-        url = f"{self.oss_host}/db/properties"
-        # Using PostgREST upsert syntax: on_conflict=url (since url is unique)
+        # Specify on_conflict to handle deduplication correctly
+        url = f"{self.oss_host}/api/database/records/properties?on_conflict=url"
         headers = {**self.headers, "Prefer": "resolution=merge-duplicates"}
         
         async with httpx.AsyncClient() as client:
@@ -35,7 +35,7 @@ class InsForgeConnector:
             return response.json()
     async def get_settings(self):
         """Fetches the latest user settings from the database"""
-        url = f"{self.oss_host}/db/user_settings?select=*&limit=1"
+        url = f"{self.oss_host}/api/database/records/user_settings?select=*&limit=1"
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=self.headers)
             response.raise_for_status()

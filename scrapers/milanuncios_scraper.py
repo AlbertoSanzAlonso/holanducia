@@ -1,6 +1,9 @@
 import asyncio
 from playwright.async_api import async_playwright
-from base_scraper import BaseScraper
+try:
+    from base_scraper import BaseScraper
+except ImportError:
+    from scrapers.base_scraper import BaseScraper
 import logging
 import re
 from typing import Optional, List

@@ -163,9 +163,14 @@ function App() {
           </div>
 
           {/* Floating Search in Header */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-20 w-full max-w-xl px-4">
-             <div className="bg-white rounded-2xl p-2 shadow-2xl border border-slate-100 flex items-center gap-4">
-                <div className="pl-4 text-slate-400">
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-20 w-full max-w-2xl px-6">
+             <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white rounded-2xl p-2 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 flex flex-col sm:flex-row items-center gap-2 sm:gap-4"
+             >
+                <div className="hidden sm:flex pl-4 text-slate-400">
                    <Search size={20} />
                 </div>
                 <input 
@@ -173,21 +178,21 @@ function App() {
                   placeholder="Busca por zona, calle o portal..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full py-4 text-slate-900 font-medium focus:outline-none"
+                  className="w-full py-4 px-4 sm:px-0 text-slate-900 font-medium focus:outline-none text-sm sm:text-base"
                 />
                 <button 
                   onClick={() => setView('dashboard')}
-                  className="bg-[#0f172a] text-white px-6 py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors"
+                  className="w-full sm:w-auto bg-[#0f172a] text-white px-8 py-4 rounded-xl font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-900/20"
                 >
                   Buscar
                 </button>
-             </div>
+             </motion.div>
           </div>
         </div>
 
 
         {view === 'dashboard' ? (
-          <section className="bg-white pt-24 pb-12 px-12 min-h-screen">
+          <section className="bg-white pt-32 pb-12 px-6 sm:px-12 min-h-screen">
              <div className="flex items-center justify-between mb-12 border-b border-slate-100 pb-6">
                 <div>
                    <h2 className="text-slate-900 text-2xl font-bold tracking-tight">Oportunidades de Venta</h2>
