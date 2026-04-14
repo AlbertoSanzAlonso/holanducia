@@ -29,6 +29,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [view, setView] = useState('dashboard') // 'dashboard' or 'settings'
+  const [searchTerm, setSearchTerm] = useState('')
 
   const fetchProperties = async () => {
     setLoading(true)
@@ -65,6 +66,10 @@ function App() {
   }, [])
 
   const filteredProperties = properties.filter(p => {
+    const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         p.city.toLowerCase().includes(searchTerm.toLowerCase())
+    if (!matchesSearch) return false
+    
     if (filter === 'hot') return p.opportunity_score >= 80
     if (filter === 'particular') return p.is_individual
     return true
@@ -72,100 +77,146 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-[#f3f4f6]">
-      {/* Sidebar - Dribbble Style */}
-      <aside className="w-72 bg-[#1e2432] text-white flex flex-col fixed h-full shrink-0">
-        <div className="p-8 flex flex-col items-center border-b border-[#ffffff08]">
-          <div className="relative mb-4">
-            <img 
-              src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200" 
-              className="w-24 h-24 rounded-full border-4 border-[#ffffff10] object-cover"
-              alt="Profile"
-            />
-            <div className="absolute bottom-1 right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-[#1e2432]" />
+      {/* Sidebar - HolanducIA Style */}
+      <aside className="w-72 bg-[#0f172a] text-white flex flex-col fixed h-full shrink-0 shadow-2xl">
+        <div className="p-8 flex flex-col items-center border-b border-white/5">
+          <div className="relative mb-6">
+            <div className="w-20 h-20 bg-gradient-to-tr from-[#00acee] to-[#0072b1] rounded-2xl flex items-center justify-center shadow-lg transform rotate-3">
+              <span className="text-3xl font-black text-white -rotate-3">H.</span>
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-4 border-[#0f172a]" />
           </div>
-          <h2 className="text-xl font-bold">ANGELA HOLAND</h2>
-          <p className="text-slate-400 text-xs mt-1 uppercase tracking-widest">Real Estate Specialist</p>
-          <div className="border-t border-[#ffffff10] w-full my-6" />
-          <button className="bg-[#00acee] hover:bg-[#009bd6] transition-colors text-white text-sm font-bold py-2 px-8 rounded-full shadow-lg shadow-[#00acee30]">
-            Captar Ahora
-          </button>
+          <h2 className="text-xl font-black tracking-tight uppercase">HolanducIA</h2>
+          <p className="text-[#00acee] text-[10px] font-bold mt-1 uppercase tracking-[0.2em]">Real Estate AI</p>
+          <div className="border-t border-white/5 w-full my-6" />
         </div>
 
-        <nav className="flex-1 mt-4">
+        <nav className="flex-1 px-4 mt-2">
           <button 
-            onClick={() => setFilter('all')}
-            className={`w-full sidebar-link ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => { setView('dashboard'); setFilter('all'); }}
+            className={`w-full sidebar-link ${view === 'dashboard' && filter === 'all' ? 'active' : ''}`}
           >
-            <LayoutDashboard size={18} /> Portfolio
+            <LayoutDashboard size={18} /> Radar General
           </button>
           <button 
-            onClick={() => setFilter('hot')}
-            className={`w-full sidebar-link ${filter === 'hot' ? 'active' : ''}`}
+            onClick={() => { setView('dashboard'); setFilter('hot'); }}
+            className={`w-full sidebar-link ${view === 'dashboard' && filter === 'hot' ? 'active' : ''}`}
           >
-            <Flame size={18} /> Oportunidades
+            <Flame size={18} className="text-orange-500" /> Hot Leads
           </button>
           <button 
             onClick={() => { setView('dashboard'); setFilter('particular'); }}
-            className={`w-full sidebar-link ${filter === 'particular' && view === 'dashboard' ? 'active' : ''}`}
+            className={`w-full sidebar-link ${view === 'dashboard' && filter === 'particular' ? 'active' : ''}`}
           >
-            <User size={18} /> Mis Blogs
+            <User size={18} /> Particulares
           </button>
-          <div className="border-t border-[#ffffff10] my-4 mx-8" />
+          
+          <div className="my-6 mx-4 border-t border-white/5" />
+          <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Ajustes</p>
+          
           <button 
             onClick={() => setView('settings')}
             className={`w-full sidebar-link ${view === 'settings' ? 'active' : ''}`}
           >
-            <RefreshCw size={18} /> Configuración
-          </button>
-          <button className="w-full sidebar-link">
-             <Mail size={18} /> Mensajes
+            <RefreshCw size={18} /> Filtros de Búsqueda
           </button>
         </nav>
 
-        <div className="p-8 mt-auto flex justify-between items-center text-slate-500">
-           <MoreHorizontal className="cursor-pointer hover:text-white" />
+        <div className="p-8 mt-auto flex justify-between items-center text-slate-500 border-t border-white/5">
+           <span className="text-[10px] font-medium tracking-widest">v1.2.4 PRO</span>
+           <MoreHorizontal className="cursor-pointer hover:text-white transition-colors" />
         </div>
       </aside>
 
       {/* Content Area */}
-      <main className="ml-72 flex-1 flex flex-col">
-        {/* Top Header - Dribbble Style */}
-        <div className="relative h-96 bg-[#2d3446] overflow-hidden">
-          {/* Background Image/Pattern */}
-          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=2000')] bg-cover bg-center mix-blend-overlay opacity-30" />
+      <main className="ml-72 flex-1 flex flex-col bg-[#f8fafc]">
+        {/* Top Header - Premium Style */}
+        <div className="relative h-[450px] bg-[#0f172a] overflow-hidden">
+          {/* Abstract background pattern */}
+          <div className="absolute inset-0 opacity-20 pointer-events-none">
+            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#00acee] blur-[120px] rounded-full" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#0072b1] blur-[100px] rounded-full" />
+          </div>
           
-          <div className="relative z-10 w-full px-12 py-8 flex justify-between items-start text-white/80 text-sm">
+          <div className="relative z-10 w-full px-12 py-8 flex justify-between items-center text-white/50 text-xs font-bold tracking-widest uppercase">
              <div className="flex items-center gap-2">
-                <Mail size={16} /> holand@ia.com
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                Sistema de Análisis Activo
              </div>
-             <div className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors cursor-pointer">
-                  <User size={14} />
+             <div className="flex items-center gap-6">
+                <span className="hover:text-white transition-colors cursor-pointer">Documentación</span>
+                <span className="hover:text-white transition-colors cursor-pointer text-white">Alberto Alonso</span>
+             </div>
+          </div>
+
+          <div className="relative z-10 flex flex-col items-center justify-center h-full -mt-16 px-6 text-center">
+            <motion.h1 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-6xl font-black text-white tracking-tighter sm:text-7xl"
+            >
+              Cazador de <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00acee] to-[#60a5fa]">Oportunidades.</span>
+            </motion.h1>
+            <p className="mt-8 text-slate-400 max-w-xl text-lg font-medium leading-relaxed">
+              Analizamos miles de anuncios de portales inmobiliarios en tiempo real para encontrar los pisos con mayor potencial de rentabilidad.
+            </p>
+          </div>
+
+          {/* Floating Search in Header */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-20 w-full max-w-xl px-4">
+             <div className="bg-white rounded-2xl p-2 shadow-2xl border border-slate-100 flex items-center gap-4">
+                <div className="pl-4 text-slate-400">
+                   <Search size={20} />
                 </div>
-             </div>
-          </div>
-
-          <div className="relative z-10 flex flex-col items-center justify-center h-full -mt-12">
-            <h1 className="text-5xl font-light text-white tracking-tight text-center">
-              Better experience from <br/> <strong className="font-bold">better AI analysis.</strong>
-            </h1>
-          </div>
-
-          {/* User Initial Circle in Header */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-20">
-             <div className="w-16 h-16 bg-[#1e2432] rounded-full border-4 border-white flex items-center justify-center shadow-xl">
-                <span className="text-white font-serif italic text-2xl">AH</span>
+                <input 
+                  type="text" 
+                  placeholder="Busca por zona, calle o portal..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full py-4 text-slate-900 font-medium focus:outline-none"
+                />
+                <button 
+                  onClick={() => setView('dashboard')}
+                  className="bg-[#0f172a] text-white px-6 py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors"
+                >
+                  Buscar
+                </button>
              </div>
           </div>
         </div>
 
+
         {view === 'dashboard' ? (
-          <section className="bg-white pt-16 pb-12 px-12">
-             <div className="flex items-center justify-between mb-10 border-b border-slate-100 pb-4">
-                <h2 className="text-slate-400 font-medium flex items-center gap-2">
-                   <div className="w-2 h-2 rounded-full border-2 border-slate-300" />
-                   Recent Opportunities from Portals
-                </h2>
+          <section className="bg-white pt-24 pb-12 px-12 min-h-screen">
+             <div className="flex items-center justify-between mb-12 border-b border-slate-100 pb-6">
+                <div>
+                   <h2 className="text-slate-900 text-2xl font-bold tracking-tight">Oportunidades de Venta</h2>
+                   <p className="text-slate-400 text-sm mt-1">Últimas propiedades detectadas en Milanuncios e Idealista.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                   <button 
+                    onClick={fetchProperties}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-colors disabled:opacity-50"
+                   >
+                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualizar
+                   </button>
+                   <div className="w-px h-6 bg-slate-200 mx-2" />
+                   <div className="flex bg-slate-100 p-1 rounded-lg">
+                      <button 
+                        onClick={() => setFilter('all')}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${filter === 'all' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+                      >
+                        TODOS
+                      </button>
+                      <button 
+                        onClick={() => setFilter('hot')}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${filter === 'hot' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+                      >
+                        TOP SCORE
+                      </button>
+                   </div>
+                </div>
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">

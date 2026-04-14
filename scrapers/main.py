@@ -1,6 +1,10 @@
 import asyncio
-from milanuncios_scraper import MilanunciosScraper
-from idealista_scraper import IdealistaScraper
+try:
+    from milanuncios_scraper import MilanunciosScraper
+    from idealista_scraper import IdealistaScraper
+except ImportError:
+    from scrapers.milanuncios_scraper import MilanunciosScraper
+    from scrapers.idealista_scraper import IdealistaScraper
 import logging
 
 # Configure logging
