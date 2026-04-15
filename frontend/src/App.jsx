@@ -265,6 +265,42 @@ function App() {
                     </motion.div>
                 ))}
              </div>
+
+             {/* Paginación Nativa Premium */}
+             {filteredProperties.length > itemsPerPage && (
+                <div className="mt-24 border-t border-slate-100 pt-12 flex items-center justify-between">
+                    <div className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                        Página {currentPage} de {Math.ceil(filteredProperties.length / itemsPerPage)}
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button 
+                            disabled={currentPage === 1}
+                            onClick={() => { setCurrentPage(p => p - 1); window.scrollTo({top: 500, behavior: 'smooth'}); }}
+                            className="p-4 bg-white border border-slate-100 rounded-2xl text-slate-900 disabled:opacity-20 hover:shadow-xl transition-all"
+                        >
+                            <ChevronLeft size={24} />
+                        </button>
+                        <div className="flex gap-2">
+                            {[...Array(Math.ceil(filteredProperties.length / itemsPerPage))].map((_, i) => (
+                                <button 
+                                    key={i}
+                                    onClick={() => { setCurrentPage(i + 1); window.scrollTo({top: 500, behavior: 'smooth'}); }}
+                                    className={`w-12 h-12 rounded-2xl font-black text-xs transition-all ${currentPage === i + 1 ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-50 text-slate-400'}`}
+                                >
+                                    {i + 1}
+                                </button>
+                            )).slice(0, 5)} {/* Limitamos a 5 páginas visibles */}
+                        </div>
+                        <button 
+                            disabled={currentPage >= Math.ceil(filteredProperties.length / itemsPerPage)}
+                            onClick={() => { setCurrentPage(p => p + 1); window.scrollTo({top: 500, behavior: 'smooth'}); }}
+                            className="p-4 bg-white border border-slate-100 rounded-2xl text-slate-900 disabled:opacity-20 hover:shadow-xl transition-all"
+                        >
+                            <ChevronRight size={24} />
+                        </button>
+                    </div>
+                </div>
+             )}
           </section>
         ) : (
           <SettingsView insforge={insforge} />
