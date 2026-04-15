@@ -38,41 +38,49 @@ class FacebookScraper(BaseScraper):
             accumulated_text = ""
             
             for scroll_idx in range(25):
-                # Capturamos lo que hay visible ahora antes de que desaparezca
-                visible_text = await page.evaluate('() => document.body.innerText')
-                accumulated_text += "\n" + visible_text
+                page.mouse.wheel(0, 800)
+                await asyncio.sleep(3)
                 
-                await page.evaluate("window.scrollBy(0, 3000)")
-                await page.wait_for_timeout(2000)
-                
-                # Clic en "Ver más"
+                # 1. Primero EXPANDIMOS todo lo que haya (Ver más / See more)
                 try:
-                    expand_btns = await page.query_selector_all('text="Ver más", text="See more", text="ver mais"')
+                    expand_btns = await page.query_selector_all("text='Ver más', text='See more', text='... Ver más'")
                     for b in expand_btns: 
                         if await b.is_visible(): await b.click()
                 except: pass
                 
+                # 2. Ahora CAPTURAMOS el texto completo desplegado
+                visible_text = await page.evaluate("document.body.innerText")
+                accumulated_text += "\n" + visible_text
+                
                 if scroll_idx % 5 == 0:
-                    logger.info(f"   🚜 Escaneo {scroll_idx}: Aspirador trabajando...")
+                    logger.info(f"   🚜 Escaneo {scroll_idx}: Profundizando en el feed...")
+                await page.wait_for_timeout(2000)
 
             # 3. EXTRACCIÓN MASIVA SOBRE EL BLOQUE ACUMULADO
-            # Usamos separadores más comunes en la versión móvil (Marcas de tiempo y botones de acción)
-            split_pattern = r'Me gusta|Compartir|Me encanta|Comentar|Ver más|See more| \d+[mhj] | \d+d | Ayer | Just now'
+            # Usamos separadores más estables que no aparecen dentro del texto del anuncio
+            split_pattern = r'Me gusta|Compartir|Me encanta|Comentar| \d+[mhj] | \d+d | Ayer | Just now'
             fragments = re.split(split_pattern, accumulated_text)
-            logger.info(f"📑 Analizando {len(fragments)} fragmentos detectados por marcas de tiempo...")
+            logger.info(f"📑 Analizando {len(fragments)} fragmentos con radar ampliado...")
             
             seen_hashes = set()
+            keywords = [
+                'piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'venta', 'chalet', 'inmueble', 
+                'hab', 'dorm', 'baño', 'estudio', 'loft', 'duplex', 'finca', 'oportunidad',
+                'apartamento', 'estudio', 'local', 'garaje', 'particular', 'dueño', 'directo',
+                'REF.', 'REF:', 'referencia'
+            ]
             for frag in fragments:
                 if len(self.results) >= self.limit: break
                 
                 clean_frag = frag.strip()
-                if len(clean_frag) < 80: continue
+                if len(clean_frag) < 50: continue
                 
-                f_hash = hashlib.md5(clean_frag.encode()).hexdigest()
+                f_hash = self._generate_stable_hash(clean_frag)
+                
                 if f_hash in seen_hashes: continue
                 seen_hashes.add(f_hash)
 
-                if any(kw in clean_frag.lower() for kw in ['piso', 'casa', 'alquiler', 'vendo', 'hab', 'baño', 'estudio', 'loft']):
+                if any(kw in clean_frag.lower() for kw in keywords):
                     self.results.append({
                         "description": clean_frag,
                         "url": f"{self.group_url}?post_id={f_hash[:8]}",
@@ -94,3 +102,11 @@ class FacebookScraper(BaseScraper):
         await page.click('button[name="login"]')
         await page.wait_for_timeout(8000)
         await context.storage_state(path=self.session_path)
+
+    def _generate_stable_hash(self, text: str) -> str:
+        """Crea un hash que ignora ruidos temporales (tiempos, números, espacios)"""
+        clean = text.lower()
+        clean = re.sub(r'\d+', '', clean) 
+        clean = re.sub(r'[^\w\s]', '', clean) 
+        clean = "".join(clean.split()) 
+        return hashlib.md5(clean.encode()).hexdigest()
