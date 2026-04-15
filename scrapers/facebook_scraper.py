@@ -82,41 +82,52 @@ class FacebookScraper(BaseScraper):
                 
                 # Proceso de rascado del grupo
                 unique_posts = set()
-                for scroll in range(30):
-                    # 1. Comprobar que la página sigue viva
+                last_height = 0
+                for scroll in range(40): # Más scrolls para dar tiempo a cargar
                     if page.is_closed(): break
                     
-                    # 2. Expandir anuncios (Ver más)
+                    # 1. Expandir anuncios (Ver más)
                     try:
                         expand_btns = await page.get_by_text(re.compile(r"Ver más|See more", re.IGNORECASE)).all()
                         for b in expand_btns[:5]:
-                            if await b.is_visible(): await b.click(timeout=500)
+                            if await b.is_visible(): await b.click(timeout=300)
                     except: pass
                     
-                    # 3. EXTRACCIÓN POR BLOQUES (Mucho más estable que re.split)
-                    # Buscamos divs que contienen palabras clave de interacción
+                    # 2. EXTRACCIÓN POR SELECTORES MÚLTIPLES
                     new_fragments = await page.evaluate("""() => {
                         const posts = [];
-                        // Buscamos contenedores que parezcan anuncios
-                        const elements = document.querySelectorAll('article, div[data-sigil="m-feed-voice-internal"], div._5r-k');
-                        elements.forEach(el => posts.push(el.innerText));
-                        
-                        // Si no encuentra nada por selector, intentamos por densidad de texto
-                        if (posts.length === 0) {
-                            return document.body ? document.body.innerText.split(/Compartir|Share|Comment|Comentar/) : [];
-                        }
-                        return posts;
+                        // Intentamos varios selectores conocidos de posts
+                        const elementSelectors = [
+                            'article', 
+                            'div[data-sigil="m-feed-voice-internal"]', 
+                            'div._5r-k', 
+                            'div[role="article"]',
+                            'div.story_body_container'
+                        ];
+                        elementSelectors.forEach(sel => {
+                            document.querySelectorAll(sel).forEach(el => {
+                                if (el.innerText.length > 50) posts.push(el.innerText);
+                            });
+                        });
+                        return [...new Set(posts)]; // Únicos en este frame
                     }""")
                     
                     for frag in new_fragments:
-                        clean = frag.strip()
-                        if len(clean) > 60: 
-                            unique_posts.add(clean)
+                        if len(frag.strip()) > 50: unique_posts.add(frag.strip())
                     
                     if scroll % 5 == 0:
-                        logger.info(f"🚜 Escaneo {scroll}: {len(unique_posts)} fragmentos únicos acumulados...")
+                        logger.info(f"🚜 [Paso {scroll}] {len(unique_posts)} fragmentos totales. Scroll: {last_height}px")
                     
-                    await page.mouse.wheel(0, 1500)
+                    # 3. SCROLL AGRESIVO (window.scrollBy + Click si bloqueado)
+                    new_height = await page.evaluate("""() => {
+                        window.scrollBy(0, 1500);
+                        return window.pageYOffset;
+                    }""")
+                    
+                    if new_height == last_height:
+                        # Si no se mueve, intentamos un click en el centro para "despertar" el foco
+                        await page.mouse.click(200, 400)
+                    last_height = new_height
                     await page.wait_for_timeout(1500)
 
                 # Mandamos los fragmentos a analizar con ESCUDO DE AHORRO
