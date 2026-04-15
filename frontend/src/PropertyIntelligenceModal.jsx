@@ -242,24 +242,39 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
              )}
           </div>
 
-          {/* Category Selector */}
-          <div className="mb-12">
-             <h4 className="text-slate-900 font-black text-xs uppercase tracking-widest mb-4 flex items-center gap-2">
-               📂 Categoría en Cartera
+          {/* Category Selector - Ahora con más presencia y colores vivos */}
+          <div className="mb-12 p-8 bg-slate-50/50 rounded-[2.5rem] border border-slate-100">
+             <h4 className="text-slate-900 font-black text-xs uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+               <div className="w-2 h-6 bg-[#00acee] rounded-full" />
+               Categoría en Cartera
              </h4>
-             <div className="flex flex-wrap gap-2">
-                {categories?.map(cat => (
-                    <button 
-                        key={cat.id}
-                        onClick={() => onUpdate({...property, category_id: cat.id})}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border-2 ${property.category_id === cat.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-100 text-slate-400 hover:border-slate-200'}`}
-                    >
-                        {cat.name}
-                    </button>
-                ))}
+             <div className="flex flex-wrap gap-3">
+                {categories?.map(cat => {
+                    const isActive = property.category_id === cat.id;
+                    return (
+                        <button 
+                            key={cat.id}
+                            onClick={async () => {
+                                const updated = {...property, category_id: cat.id};
+                                setProperty(updated);
+                                await onUpdate(updated);
+                            }}
+                            style={{ 
+                                backgroundColor: isActive ? cat.color : 'white',
+                                borderColor: isActive ? cat.color : '#f1f5f9',
+                                color: isActive ? 'white' : '#94a3b8'
+                            }}
+                            className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border-2 shadow-sm hover:scale-105 active:scale-95 ${isActive ? 'shadow-xl' : 'hover:border-slate-300'}`}
+                        >
+                            {cat.name}
+                        </button>
+                    )
+                })}
              </div>
           </div>
 
+          {/* Description Section was already above, removing the duplicated broken one */}
+          
           {/* Actions */}
           <div className="flex flex-col sm:flex-row items-center gap-4 mt-auto pt-6 border-t border-slate-100">
              <a 
