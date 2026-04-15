@@ -41,17 +41,28 @@ class FacebookScraper(BaseScraper):
                 try:
                     await page.goto("https://m.facebook.com/login", wait_until="networkidle")
                     
-                    # Limpieza agresiva de Cookies/Muros (Ignorando Cancelares)
-                    cookie_btns = await page.locator('button:has-text("Accept"), button:has-text("Aceptar"), button:has-text("Allow")').all()
-                    for b in cookie_btns:
-                        if await b.is_visible(): await b.click()
-                    
+                    # Llenamos campos (Asegurando que sean los correctos)
+                    await page.wait_for_selector('input[name="email"]', timeout=10000)
                     await page.fill('input[name="email"]', self.user)
                     await page.fill('input[name="pass"]', self.password)
                     
-                    # Buscamos el botón de login real (Evitando "Cancel", "Отмена", etc)
-                    login_btn = page.locator('button[name="login"], button[type="submit"]').filter(has_not_text="Cancel").filter(has_not_text="Отмена")
-                    await login_btn.first.click()
+                    # Buscamos el botón de login real con MIRADA QUIRÚRGICA
+                    # Prioridad 1: Atributo técnico de Facebook. Prioridad 2: Texto claro.
+                    login_selectors = [
+                        '[data-sigil="m_login_button"]',
+                        'button[name="login"]',
+                        'button:has-text("Log In")',
+                        'button:has-text("Entrar")'
+                    ]
+                    
+                    for sel in login_selectors:
+                        try:
+                            # Ignoramos botones de "Cancelar" o "Atrás" que suelen ser clases como 'dialog-cancel-button'
+                            btn = page.locator(sel).filter(has_not_text="Cancel").filter(has_not_text="Back").filter(has_not_text="Atrás")
+                            if await btn.is_visible():
+                                await btn.click(timeout=5000)
+                                break
+                        except: continue
                     
                     await page.wait_for_timeout(5000)
                     logger.info("✅ Login procesado.")
