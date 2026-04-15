@@ -35,45 +35,46 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-8"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-12"
     >
-      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-xl" onClick={onClose} />
       
       <motion.div 
-        initial={{ scale: 0.9, y: 20 }}
+        initial={{ scale: 0.9, y: 30 }}
         animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        className="relative w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row max-h-[90vh]"
+        exit={{ scale: 0.9, y: 30 }}
+        className="relative w-full max-w-6xl bg-white rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col lg:flex-row max-h-[90vh]"
       >
-        {/* Toolbar Superior */}
-        <div className="absolute top-6 right-6 z-50 flex gap-2">
+        {/* Toolbar Superior - Ahora flotando con contraste real */}
+        <div className="absolute top-8 right-8 z-[110] flex gap-3">
             {!isEditing ? (
                 <button 
                     onClick={() => setIsEditing(true)}
-                    className="p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-2xl text-white transition-all shadow-xl"
+                    className="p-4 bg-slate-900 hover:bg-black rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
                 >
-                    <Edit3 size={20} />
+                    <Edit3 size={22} />
                 </button>
             ) : (
                 <button 
                     onClick={handleSave}
                     disabled={saving}
-                    className="p-3 bg-emerald-500 hover:bg-emerald-600 rounded-2xl text-white transition-all shadow-xl"
+                    className="p-4 bg-emerald-500 hover:bg-emerald-600 rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
                 >
-                    <Save size={20} />
+                    <Save size={22} />
                 </button>
             )}
             <button 
                 onClick={handleDelete}
-                className="p-3 bg-red-500/80 hover:bg-red-600 rounded-2xl text-white transition-all shadow-xl"
+                className="p-4 bg-red-500 hover:bg-red-600 rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
             >
-                <Trash2 size={20} />
+                <Trash2 size={22} />
             </button>
+            <div className="w-px bg-slate-200 h-10 mx-2 self-center" />
             <button 
                 onClick={onClose}
-                className="p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-2xl text-white transition-all shadow-xl"
+                className="p-4 bg-slate-100 hover:bg-slate-200 rounded-2xl text-slate-900 transition-all shadow-xl hover:scale-105 active:scale-95"
             >
-                <X size={20} />
+                <X size={22} />
             </button>
         </div>
 
