@@ -34,7 +34,7 @@ class FacebookScraper(BaseScraper):
                 await self._perform_login(page, context)
 
             # 2. Excavación con ACUMULACIÓN (Para que no se le olvide nada)
-            logger.info(f"🚜 Aspirando contenido (Objetivo: {self.limit} leads de calidad)...")
+            logger.info(f"🚜 Aspirando contenido (Objetivo: {self.limit} publicaciones brutas para filtrar)...")
             accumulated_text = ""
             
             for scroll_idx in range(25):
