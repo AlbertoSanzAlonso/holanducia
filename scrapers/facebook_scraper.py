@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 class FacebookScraper(BaseScraper):
     def __init__(self, group_url, limit=50):
         super().__init__("Facebook", base_url="https://facebook.com")
-        self.group_url = group_url
+        # Si nos pasan solo el ID, montamos la URL completa
+        if group_url.isdigit() or not group_url.startswith("http"):
+            self.group_url = f"https://m.facebook.com/groups/{group_url}"
+        else:
+            self.group_url = group_url.replace("www.facebook.com", "m.facebook.com")
+            
         self.limit = limit
         self.results = []
         self.user = os.getenv("FB_USER")
