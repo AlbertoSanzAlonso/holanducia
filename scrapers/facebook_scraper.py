@@ -63,40 +63,40 @@ class FacebookScraper(BaseScraper):
             KEYWORDS = ["piso", "casa", "vivienda", "inmueble", "terreno", "parcela", "alquilo", "vendo", "finca", "chalet", "estudio", "loft", "duplex"]
             # Palabras que suelen indicar ruido (no inmobiliario)
             NOISE = ["coche", "moto", "mueble", "sofá", "tv", "empleo", "trabajo", "regalo", "iphone"]
-
             # Buscamos los contenedores de los posts
             posts = await page.query_selector_all('div[role="feed"] > div, div[role="main"] div[data-ad-preview="message"]')
 
             logger.info(f"📊 Analizando {len(posts)} posibles posts...")
             
-            for post in posts:
+            for i, post in enumerate(posts):
                 if len(self.results) >= self.limit:
                     break
                 try:
                     content = await post.inner_text()
                     content_lower = content.lower()
                     
-                    # 1. Filtro rápido de palabras clave
-                    has_keyword = any(kw in content_lower for kw in KEYWORDS)
-                    is_noise = any(ns in content_lower for ns in NOISE)
+                    # Log de lo que estamos viendo (primeros 50 caracteres)
+                    logger.info(f"  [Post {i+1}] Visto: {content_lower[:50].replace('\n', ' ')}...")
                     
-                    if has_keyword and not is_noise:
-                        # 2. Si pasa el filtro, lo procesamos
-                        logger.info(f"✨ ¡Oportunidad detectada!: {content[:60]}...")
-                        
+                    is_real_estate = any(kw in content_lower for kw in ['piso', 'casa', 'alquiler', 'vendo', 'habitacion', 'estudio', 'chalet', 'inmueble'])
+                    is_noise = any(kw in content_lower for kw in ['mueble', 'sofá', 'mesa', 'coche', 'busco', 'necesito'])
+                    
+                    if is_real_estate and not is_noise:
+                        logger.info(f"  ✅ ¡Oportunidad detectada! Guardando...")
+                        # Extraer link (si existe) y data básica
                         self.results.append({
-                            "source": "Facebook",
-                            "url": f"{self.group_url}",
-                            "title": content[:50].replace("\n", " ") + "...",
+                            "title": content[:100] + "...",
                             "description": content,
-                            "city": "Por determinar", # Habría que extraer con regex o IA
-                            "price": 0, # Extraer con regex
-                            "is_active": True
+                            "price": self._extract_price(content),
+                            "city": "Málaga", # O extraer de settings
+                            "source": "Facebook",
+                            "url": self.url,
+                            "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000"]
                         })
                     else:
-                        logger.debug(f"🗑️ Post ignorado (Ruido o no inmobiliario): {content[:40]}...")
+                        logger.info(f"  ❌ Descartado (No inmobiliario o Ruido)")
+                        
                 except Exception as e:
-                    logger.error(f"⚠️ Error al procesar un post de FB: {e}")
                     continue
 
             await browser.close()
