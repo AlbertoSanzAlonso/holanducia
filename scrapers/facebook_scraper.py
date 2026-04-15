@@ -1,12 +1,12 @@
 import asyncio
-import logging
 import os
-import hashlib
 import re
-from typing import List, Dict, Any
+import logging
+import hashlib
+import json
 from playwright.async_api import async_playwright
-from base_scraper import BaseScraper
-from agency.analyst import AnalystAgent
+from scrapers.base_scraper import BaseScraper
+from scrapers.agency.analyst import AnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -31,101 +31,77 @@ class FacebookScraper(BaseScraper):
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            iphone = p.devices['iPhone 13']
-            context = await browser.new_context(**iphone)
+            
+            # Gestión de Sesión
+            context = await browser.new_context()
             page = await context.new_page()
-
+            
+            # Login simplificado (Asumimos cookies o login previo si existe)
             await page.goto(self.group_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(2000)
 
-            if await page.query_selector('input[name="email"]') or "login" in page.url:
-                await self._perform_login(page, context)
-
-            # 2. Excavación con ACUMULACIÓN (Para que no se le olvide nada)
-            logger.info(f"🚜 Aspirando contenido (Objetivo: {self.limit} publicaciones brutas para filtrar)...")
-            accumulated_text = ""
+            # 2. Excavación con ACUMULACIÓN GRANULAR
+            logger.info(f"🚜 Aspirando contenido (Objetivo: {self.limit} publicaciones brutas)...")
+            unique_posts = set()
             
             for scroll_idx in range(25):
-                await page.mouse.wheel(0, 800)
-                await asyncio.sleep(3)
-                
-                # 1. Primero EXPANDIMOS todo lo que haya (Ver más / See more)
+                # Expandimos los "Ver más" para capturar el post entero
                 try:
-                    expand_btns = await page.query_selector_all("text='Ver más', text='See more', text='... Ver más'")
-                    for b in expand_btns: 
+                    view_more = await page.get_by_text("Ver más").all()
+                    for b in view_more:
                         if await b.is_visible(): await b.click()
                 except: pass
                 
-                # 2. Ahora CAPTURAMOS el texto completo desplegado (Limpiando ruido de UI)
-                visible_text = await page.evaluate("document.body.innerText")
-                # Filtramos el ruido común de Facebook que ensucia la descripción
-                visible_text = re.sub(r'Quienes vivimos aquí.*|Public group.*|Join group.*|About this group.*|There\'s more to see.*|Log in.*|Create new account.*', '', visible_text)
-                accumulated_text += "\n" + visible_text
+                # Buscamos artículos individuales
+                posts_locators = await page.locator('article, [role="article"]').all()
+                for post in posts_locators:
+                    try:
+                        text = await post.inner_text()
+                        # Limpieza básica de ruido
+                        clean_text = re.sub(r'Compartir|Comentar|Me gusta|Seguir|Joined|Public group.*', '', text)
+                        if len(clean_text) > 100: # Un anuncio de piso suele ser largo
+                            unique_posts.add(clean_text.strip())
+                    except: continue
+                
+                await page.mouse.wheel(0, 1000)
+                await page.wait_for_timeout(1500)
                 
                 if scroll_idx % 5 == 0:
-                    logger.info(f"   🚜 Escaneo {scroll_idx}: Profundizando en el feed...")
-                await page.wait_for_timeout(2000)
+                    logger.info(f"   🚜 Escaneo {scroll_idx}: {len(unique_posts)} fragmentos únicos acumulados...")
 
-            # 3. EXTRACCIÓN MASIVA SOBRE EL BLOQUE ACUMULADO
-            # Usamos separadores más estables que no aparecen dentro del texto del anuncio
-            split_pattern = r'Me gusta|Compartir|Me encanta|Comentar| \d+[mhj] | \d+d | Ayer | Just now'
-            fragments = re.split(split_pattern, accumulated_text)
-            logger.info(f"📑 Analizando {len(fragments)} fragmentos con radar ampliado...")
+            logger.info(f"📑 Analizando {len(unique_posts)} candidatos con OpenAI...")
             
-            seen_hashes = set()
-            keywords = [
-                'piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'venta', 'chalet', 'inmueble', 
-                'hab', 'dorm', 'baño', 'estudio', 'loft', 'duplex', 'finca', 'oportunidad',
-                'apartamento', 'estudio', 'local', 'garaje', 'particular', 'dueño', 'directo',
-                'REF.', 'REF:', 'referencia'
-            ]
-            for frag in fragments:
-                if len(self.results) >= self.limit: break
+            saved_count = 0
+            for post_text in unique_posts:
+                if saved_count >= self.limit: break
                 
-                clean_frag = frag.strip()
-                if len(clean_frag) < 50: continue
+                # Comprobamos si el Director ya ha cumplido la cuota global
+                if self.is_quota_met(): break
                 
-                # 1. Analizamos PRIMERO para tener datos limpios (Título, Precio, etc.)
-                ai_data = await self.analyst.parse_raw_text(clean_frag, source="Facebook")
-                if not ai_data: continue
+                # Pasamos el filtro de la IA
+                ai_data = await self.analyst.parse_raw_text(post_text, self.source_name)
                 
-                # 2. Generamos el DNI basado en el TÍTULO + PRECIO + CIUDAD (lo que el usuario pidió)
-                # Esto es lo más estable del mundo
-                identity_string = f"{ai_data.get('title', '')}{ai_data.get('price', 0)}{ai_data.get('city', '')}".lower()
-                identity_string = re.sub(r'[^a-z0-9]', '', identity_string) # Limpieza total
-                f_hash = hashlib.md5(identity_string.encode()).hexdigest()
-                
-                unique_url = f"{self.group_url}?post_id={f_hash[:16]}"
-                
-                # 3. Ahora sí, comprobamos si este "Piso + Precio" ya existe
-                if await self.is_already_scraped(unique_url):
-                    logger.info(f"⏭️  Omitiendo duplicado semántico: {ai_data['title']}")
-                    continue
+                if ai_data:
+                    # Generamos ID único basado en el contenido para evitar duplicados semánticos
+                    f_hash = hashlib.md5(f"{ai_data['title']}{ai_data['price']}{ai_data.get('city','')}".encode()).hexdigest()
+                    unique_id = f"FB-{f_hash[:12]}"
+                    
+                    if await self.is_already_scraped(unique_id):
+                        logger.info(f"⏭️  Omitiendo duplicado: {ai_data['title']}")
+                        continue
 
-                ai_data["url"] = unique_url
-                self.results.append(ai_data)
-                logger.info(f"✨ Nuevo Lead: {ai_data['title']} en {ai_data['city']}")
+                    # Guardamos
+                    ai_data["url"] = f"{self.group_url}?post_id={f_hash[:16]}"
+                    success = await self.connector.upsert_property(ai_data)
+                    if success:
+                        saved_count += 1
+                        logger.info(f"✨ Nuevo Lead: {ai_data['title']} en {ai_data.get('city','Málaga')}")
+                        await self.mark_as_scraped(unique_id)
 
             await browser.close()
-            logger.info(f"✅ Extracción finalizada: {len(self.results)} candidatos reales encontrados.")
-            return self.results
+            logger.info(f"✅ Extracción finalizada: {saved_count} candidatos reales inyectados.")
+            return saved_count
 
-    async def _perform_login(self, page, context):
-        logger.info("🔐 Realizando login...")
-        try:
-            cookie_btn = await page.query_selector('button:has-text("Aceptar")')
-            if cookie_btn: await cookie_btn.click()
-        except: pass
-        await page.fill('input[name="email"]', self.user)
-        await page.fill('input[name="pass"]', self.password)
-        await page.click('button[name="login"]')
-        await page.wait_for_timeout(8000)
-        await context.storage_state(path=self.session_path)
-
-    def _generate_stable_hash(self, text: str) -> str:
-        """Crea un hash que ignora ruidos temporales (tiempos, números, espacios)"""
-        clean = text.lower()
-        clean = re.sub(r'\d+', '', clean) 
-        clean = re.sub(r'[^\w\s]', '', clean) 
-        clean = "".join(clean.split()) 
-        return hashlib.md5(clean.encode()).hexdigest()
+    def is_quota_met(self) -> bool:
+        # Nota: Esta función debería consultar al Director, pero por ahora simplificamos
+        return False
