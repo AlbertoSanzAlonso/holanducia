@@ -114,7 +114,8 @@ class FacebookScraper(BaseScraper):
                 for post_text in unique_posts:
                     if total_leads >= self.limit: break
                     
-                    ai_data = await self.analyst.parse_raw_text(post_text, group_id)
+                    # Usamos "Facebook" como nombre de fuente limpio
+                    ai_data = await self.analyst.parse_raw_text(post_text, "Facebook")
                     if ai_data:
                         # Deduplicación por contenido
                         f_hash = hashlib.md5(f"{ai_data['title']}{ai_data['price']}".encode()).hexdigest()[:12]
