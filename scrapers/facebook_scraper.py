@@ -64,7 +64,10 @@ class FacebookScraper(BaseScraper):
             # Palabras que suelen indicar ruido (no inmobiliario)
             NOISE = ["coche", "moto", "mueble", "sofá", "tv", "empleo", "trabajo", "regalo", "iphone"]
             
-            # 4. Validar si estamos logueados o nos ha echado
+            # 4. Ir al grupo
+            await page.goto(self.group_url, wait_until="networkidle")
+            
+            # 5. Validar si estamos logueados o nos ha echado
             if await page.query_selector('form[data-testid="royal_login_form"]') or await page.query_selector('input[name="email"]'):
                 logger.error("❌ ERROR: No estamos logueados en Facebook. La sesión ha caducado o el login falló.")
                 await browser.close()
