@@ -8,7 +8,7 @@ class HunterAgent(BaseAgent):
     def __init__(self):
         super().__init__("Hunter")
 
-    async def discover_leads(self, city: str, portal: str, query: str) -> List[str]:
+    async def discover(self, portal: str, city: str) -> List[str]:
         self.logger.info(f"🔍 Discovery Phase: Infiltrating {portal} in {city} directly...")
         
         # Portal URL Mapping
