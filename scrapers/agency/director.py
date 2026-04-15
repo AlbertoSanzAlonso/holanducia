@@ -35,17 +35,28 @@ class DirectorAgent:
 
         logger.info(f"🕵️‍♂️ Iniciando Misión de Captación Masiva. Objetivo: {quota} leads nuevos.")
         
-        # Rotación Inteligente: Barajamos los grupos para no favorecer siempre a los mismos
-        import random
-        random.shuffle(fb_groups)
-        logger.info(f"🔄 Orden de patrulla para esta misión: {fb_groups}")
+        total_captured = 0
+        attempts = 0
+        max_attempts = 5 # Para no entrar en bucle infinito si no hay nada en todo el día
         
-        # 1. Ejecución Secuencial para máxima estabilidad
-        scraper = FacebookScraper(fb_groups[0], limit=quota)
-        results_count = await scraper.scrape_multiple(fb_groups)
-        
-        logger.info(f"📊 Misión terminada. Se han procesado e inyectado {results_count} leads.")
-        
-        # El rascador ya se encarga de inyectar
-        logger.info(f"🏁 Director: Misión cerrada.")
-        return results_count
+        while total_captured < quota and attempts < max_attempts:
+            attempts += 1
+            if attempts > 1:
+                logger.info(f"⏳ Objetivo no alcanzado ({total_captured}/{quota}). Reintentando ronda {attempts}/{max_attempts}...")
+                await asyncio.sleep(60) # Espera táctica entre rondas
+                
+            # Rotación Inteligente
+            import random
+            random.shuffle(fb_groups)
+            
+            # 1. Ejecución Secuencial para máxima estabilidad
+            scraper = FacebookScraper(fb_groups[0], limit=(quota - total_captured))
+            new_leads = await scraper.scrape_multiple(fb_groups)
+            total_captured += new_leads
+            
+            if total_captured >= quota:
+                logger.info(f"🎯 ¡OBJETIVO CUMPLIDO! Se han captado {total_captured} leads.")
+                break
+
+        logger.info(f"🏁 Director: Misión cerrada con {total_captured} leads totales.")
+        return total_captured
