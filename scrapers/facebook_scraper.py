@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import hashlib
+import re
 from typing import List, Dict, Any
 from playwright.async_api import async_playwright
 from base_scraper import BaseScraper
@@ -9,23 +11,19 @@ logger = logging.getLogger(__name__)
 
 class FacebookScraper(BaseScraper):
     def __init__(self, group_id: str, limit: int = 10):
-        # Usamos M.FACEBOOK para mayor estabilidad
         self.group_url = f"https://m.facebook.com/groups/{group_id}"
         super().__init__(source_name="Facebook", base_url=self.group_url)
-        self.group_id = group_id
         self.limit = limit
         self.user = os.getenv("FB_USER")
         self.password = os.getenv("FB_PASSWORD")
         self.session_path = "/app/fb_session.json"
 
     async def scrape(self):
-        logger.info(f"👥 [Modo Móvil] Iniciando infiltración en: {self.group_url}")
+        logger.info(f"👥 [Infiltración Total] Grupo: {self.group_url}")
         
         async with async_playwright() as p:
-            # Usamos un dispositivo móvil real para despistar
-            iphone = p.devices['iPhone 13']
             browser = await p.chromium.launch(headless=True)
-            
+            iphone = p.devices['iPhone 13']
             context_args = {**iphone}
             if os.path.exists(self.session_path):
                 context_args["storage_state"] = self.session_path
@@ -33,102 +31,87 @@ class FacebookScraper(BaseScraper):
             context = await browser.new_context(**context_args)
             page = await context.new_page()
 
-            # 1. Ir directo al grupo
+            # 1. Navegación y Login
             await page.goto(self.group_url, wait_until="domcontentloaded")
             await page.wait_for_timeout(4000)
 
-            # 2. ¿Pide login?
             if await page.query_selector('input[name="email"]') or "login" in page.url:
-                logger.info("🔐 Facebook Móvil pide credenciales. Iniciando login...")
-                
-                # Aceptar cookies en móvil
+                logger.info("🔐 Realizando login en versión móvil...")
                 try:
-                    cookie_btn = await page.query_selector('button:has-text("Aceptar todas")') or await page.query_selector('button:has-text("Aceptar")')
+                    cookie_btn = await page.query_selector('button:has-text("Aceptar")')
                     if cookie_btn: await cookie_btn.click(); await page.wait_for_timeout(2000)
                 except: pass
-
-                if not self.user or not self.password:
-                    logger.error("❌ FB_USER/FB_PASSWORD no configurados.")
-                    await browser.close(); return
 
                 await page.fill('input[name="email"]', self.user)
                 await page.fill('input[name="pass"]', self.password)
                 await page.click('button[name="login"]')
-                
-                # En móvil suele haber una pantalla intermedia de "Login con un toque"
                 await page.wait_for_timeout(10000)
-                
-                # Detectar Checkpoint
-                if "checkpoint" in page.url:
-                    logger.error(f"🚨 BLOQUEO DE SEGURIDAD MÓVIL. URL: {page.url}")
-                    await self.connector.upsert_scraping_status("security_block", "Facebook Móvil requiere verificación.")
-                    await context.storage_state(path=self.session_path)
-                    await browser.close(); return
-
                 await context.storage_state(path=self.session_path)
-                logger.info("✅ Sesión móvil guardada.")
 
-            # 3. Validar si estamos dentro del grupo
-            # En m.facebook los grupos tienen una estructura distinta
-            await page.goto(self.group_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(5000)
-            
-            is_in = "groups" in page.url and not (await page.query_selector('input[name="email"]'))
-            if not is_in:
-                logger.error(f"❌ Fallo crítico de infiltración móvil. URL: {page.url}")
-                await browser.close(); return
-
-            logger.info("✅ Infiltrado con éxito en el grupo móvil.")
-
-            # 4. Scrolleo táctico
-            for _ in range(5):
-                await page.evaluate("window.scrollBy(0, 1200)")
+            # 2. Scrolleo profundo para recabar datos
+            logger.info("🚜 Descargando anuncios recientes...")
+            for _ in range(6):
+                await page.evaluate("window.scrollBy(0, 1500)")
                 await page.wait_for_timeout(2500)
 
-            # 5. Extraer posts (Selector móvil: suelen ser artículos o secciones con data-ft)
-            posts = await page.query_selector_all('article, div[data-ft*="top_level_post_id"]')
-            logger.info(f"📊 Analizando {len(posts)} posts móviles...")
+            # 3. Extracción con selectores móviles precisos
+            posts = await page.query_selector_all('article, div[role="article"]')
+            logger.info(f"📊 {len(posts)} publicaciones encontradas. Analizando calidad...")
             
             for i, post in enumerate(posts):
                 if len(self.results) >= self.limit: break
                 try:
-                    content = await post.inner_text()
-                    content_lower = content.lower()
+                    text = await post.inner_text()
+                    text_lower = text.lower()
                     
-                    preview = content_lower[:50].replace('\n', ' ')
-                    logger.info(f"  [Post {i+1}] Visto: {preview}...")
+                    # Filtro de oportunidad
+                    keywords = ['piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'chalet', 'inmueble', 'habitacion', 'estudio']
+                    noise = ['busco', 'necesito', 'demanda', 'mueble', 'sofá', 'coche']
                     
-                    is_real_estate = any(kw in content_lower for kw in ['piso', 'casa', 'alquiler', 'vendo', 'vivienda', 'chalet', 'inmueble'])
-                    if is_real_estate:
-                        logger.info(f"  ✅ ¡Oportunidad detectada en móvil!")
+                    if any(k in text_lower for k in keywords) and not any(n in text_lower for n in noise):
+                        # Extracción de imagen real
+                        img_el = await post.query_selector('img')
+                        img_url = await img_el.get_attribute('src') if img_el else "https://images.unsplash.com/photo-1560518883-ce09059eeffa"
                         
-                        # Generar una ID única basada en el contenido para evitar duplicados
-                        import hashlib
-                        content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
+                        content_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+                        price = self._extract_price(text)
+                        
+                        # Buscar enlace real del post (suele estar en el timestamp)
+                        post_url = self.group_url # Por defecto el grupo
+                        link_el = await post.query_selector('a[href*="story.php"], a[href*="/posts/"], a[href*="/permalink/"]')
+                        if link_el:
+                            href = await link_el.get_attribute('href')
+                            if href:
+                                if href.startswith('/'): post_url = f"https://m.facebook.com{href}"
+                                else: post_url = href
+
+                        logger.info(f"  ✅ Detectado: {text[:40]}... (URL: {post_url[:30]}...)")
                         
                         self.results.append({
                             "external_id": f"FB-{content_hash}",
-                            "title": content[:100].replace('\n', ' ') + "...",
-                            "description": content,
-                            "price": self._extract_price(content_lower),
+                            "title": text.split('\n')[0][:80] if '\n' in text else text[:80],
+                            "description": text,
+                            "price": price,
                             "city": "Málaga",
                             "source": "Facebook",
-                            "url": self.group_url + "/" + content_hash, # URL ficticia única
-                            "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000"]
+                            "url": post_url,
+                            "images": [img_url],
+                            "is_individual": "particular" in text_lower or "dueño" in text_lower
                         })
-                except: continue
+                except Exception as e:
+                    logger.debug(f"Error en post {i}: {e}")
+                    continue
 
             await browser.close()
             if self.results:
                 await self.save_results()
-                logger.info(f"🎉 Éxito móvil: {len(self.results)} ofertas capturadas.")
+                logger.info(f"🎉 Éxito: {len(self.results)} ofertas listas en HolanducIA.")
 
     def _extract_price(self, text):
-        import re
-        # Buscar patrones de precio (123.456€, 123000 €, etc)
-        match = re.search(r'(\d+[\d\.,]*)\s?€', text)
+        # Limpiar texto para buscar precios mejor
+        text = text.replace('.', '').replace(',', '')
+        match = re.search(r'(\d{3,6})\s?[€|euros|e]', text, re.IGNORE_DECOMPOSITION)
         if match:
-            p = match.group(1).replace('.', '').replace(',', '.')
-            try: return float(p)
+            try: return float(match.group(1))
             except: return 0
         return 0
