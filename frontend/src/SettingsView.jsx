@@ -196,7 +196,7 @@ export default function SettingsView({ insforge }) {
             <div className="flex justify-between items-start mb-8">
               <div>
                 <div className="flex items-center gap-2 text-blue-600 mb-1">
-                  <Facebook size={20} fill="currentColor" />
+                  <Globe size={20} />
                   <span className="text-[10px] font-black uppercase tracking-widest">Infiltración Social</span>
                 </div>
                 <h2 className="text-2xl font-black text-slate-900">Grupos de Facebook</h2>
