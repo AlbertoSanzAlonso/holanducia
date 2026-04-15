@@ -6,9 +6,9 @@ from typing import Dict, Any
 logger = logging.getLogger(__name__)
 
 class InsForgeConnector:
-    def __init__(self, oss_host: str, api_key: str):
-        self.oss_host = oss_host.rstrip('/')
-        self.api_key = api_key
+    def __init__(self, oss_host: str = None, api_key: str = None):
+        self.oss_host = (oss_host or os.getenv("INSFORGE_URL", "")).rstrip('/')
+        self.api_key = api_key or os.getenv("INSFORGE_ANON_KEY", "")
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -88,7 +88,9 @@ class InsForgeConnector:
 
     async def upsert_scraping_status(self, status: str, message: str):
         """Updates the latest scraping request with a specific status and message"""
-        # 1. Obtener la ID de la última misión
+        # 1. Obtenemos configuración (Grupos de Facebook autorizados)
+        settings = await self.get_settings()
+        # 2. Obtener la ID de la última misión
         url = f"{self.oss_host}/api/database/records/scraping_requests?select=id&order=requested_at.desc&limit=1"
         async with httpx.AsyncClient() as client:
             try:

@@ -17,8 +17,8 @@ class DirectorAgent:
         logger.info(f"🕵️‍♂️ Iniciando Misión de Captación Masiva. Objetivo: {quota} leads nuevos.")
         
         # 1. Obtenemos configuración (Grupos de Facebook autorizados)
-        settings = await self.insforge.get_user_settings()
-        fb_groups = settings.get("facebook_groups", [])
+        settings = await self.insforge.get_settings()
+        fb_groups = settings.get("facebook_groups", []) if settings else []
         
         if not fb_groups:
             logger.warning("⚠️ No hay grupos de Facebook configurados. Misión abortada.")
