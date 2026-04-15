@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # La API que se comunica con el frontend y tu Dashboard
+  api:
+    build: .
+    container_name: holanducia_api
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  # El trabajador que lanza los scrapers periódicamente
+  worker:
+    build: .
+    container_name: holanducia_worker
+    restart: always
+    command: ["python", "scrapers/main.py"]
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  # Base de datos rápida en memoria para tareas y cache
+  redis:
+    image: redis:alpine
+    container_name: holanducia_redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+networks:
+  default:
+    name: holanducia_network

@@ -1,56 +1,71 @@
-export interface Property {
-  id?: number;
-  external_id: string;
-  source: string;
-  url: string;
-  title?: string;
-  price: number;
-  currency: string;
-  location_raw?: string;
-  city?: string;
-  neighborhood?: string;
-  address?: string;
-  coordinates?: { x: number, y: number };
-  catastro_ref?: string;
-  rooms?: number;
-  bathrooms?: number;
-  size_m2?: number;
-  description?: string;
-  images: string[];
-  is_individual: boolean;
-  is_agency: boolean;
-  last_seen: string; // ISO Date
-  created_at?: string; // ISO Date
-  updated_at?: string; // ISO Date
-  price_history: any[];
-  opportunity_score: number;
-}
-
 export default async (req: Request) => {
+  // Manejo de CORS
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
+    });
+  }
+
   try {
-    const { catastro_ref } = await req.json()
+    const { address, city, province, catastro_ref } = await req.json();
     
-    if (!catastro_ref) {
-      throw new Error("Missing catastro_ref")
+    let result;
+    if (catastro_ref) {
+      result = await getDetailsByRC(catastro_ref);
+    } else if (address && city) {
+      const rc = await getRCByAddress(address, city, province || city);
+      if (rc) {
+        result = await getDetailsByRC(rc);
+      }
     }
 
-    // Mocking Catastro Response
-    // In production, this would call: https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCallejero.asmx
-    const mockData = {
-      year_built: 1985 + Math.floor(Math.random() * 30),
-      use: "Residencial",
-      surface_m2: 85.0,
-      floor: "2"
-    }
+    if (!result) throw new Error("No se pudo localizar en Catastro");
 
-    return new Response(
-      JSON.stringify(mockData),
-      { headers: { "Content-Type": "application/json" } }
-    )
+    const data = await result.json();
+
+    return new Response(JSON.stringify(data), {
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*" 
+      }
+    });
+
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { 
       status: 400,
-      headers: { "Content-Type": "application/json" } 
-    })
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*" 
+      } 
+    });
   }
+};
+
+async function getRCByAddress(address: string, city: string, province: string) {
+  const url = `https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCallejero.asmx/Consulta_DNPPP?Provincia=${encodeURIComponent(province)}&Municipio=${encodeURIComponent(city)}&Sigla=&Calle=${encodeURIComponent(address)}&Numero=&Bloque=&Escalera=&Planta=&Puerta=`;
+  const response = await fetch(url);
+  const text = await response.text();
+  const rcMatch = text.match(/<pc1>(.*?)<\/pc1>.*?<pc2>(.*?)<\/pc2>/s);
+  return rcMatch ? rcMatch[1] + rcMatch[2] : null;
+}
+
+async function getDetailsByRC(rc: string) {
+  const url = `https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCallejero.asmx/Consulta_RCCOOR?RC=${rc}&Provincia=&Municipio=`;
+  const response = await fetch(url);
+  const text = await response.text();
+  const surface = text.match(/<sfc>(.*?)<\/sfc>/)?.[1] || "0";
+  const year = text.match(/<ant>(.*?)<\/ant>/)?.[1] || "0";
+  const use = text.match(/<uso>(.*?)<\/uso>/)?.[1] || "Residencial";
+
+  return new Response(JSON.stringify({
+    catastro_ref: rc,
+    surface_m2: parseFloat(surface.replace(',', '.')),
+    year_built: parseInt(year),
+    use: use,
+    is_verified: true
+  }));
 }

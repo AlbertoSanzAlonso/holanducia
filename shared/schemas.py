@@ -18,6 +18,9 @@ class PropertyBase(BaseModel):
     rooms: Optional[int] = None
     bathrooms: Optional[int] = None
     size_m2: Optional[float] = None
+    has_parking: bool = False
+    has_terrace: bool = False
+    has_pool: bool = False
     description: Optional[str] = None
     images: List[str] = []
     is_individual: bool = False

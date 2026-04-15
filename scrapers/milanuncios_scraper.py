@@ -5,97 +5,95 @@ try:
 except ImportError:
     from scrapers.base_scraper import BaseScraper
 import logging
+import random
 import re
-from typing import Optional, List
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 class MilanunciosScraper(BaseScraper):
     def __init__(self, city: str = "madrid", settings: Optional[dict] = None):
-        max_price = settings.get("max_price") if settings else None
-        rooms = settings.get("min_rooms") if settings else None
-        
-        base_url = f"https://www.milanuncios.com/inmobiliaria-en-{city}/"
-        query_params = ["fromSearch=1"]
-        if max_price: query_params.append(f"hasta={max_price}")
-        if rooms: query_params.append(f"habitaciones={rooms}")
-        
-        base_url += "?" + "&".join(query_params)
-        super().__init__(source_name="Milanuncios", base_url=base_url, settings=settings)
+        super().__init__(source_name="Milanuncios", base_url="milanuncios.com", settings=settings)
+        self.city = city
 
     async def scrape(self):
-        logger.info(f"Starting {self.source_name} scrape for {self.base_url}")
+        logger.info(f"🚀 Iniciando SUPER-BARRIDO Milanuncios para {self.city}")
         
         async with async_playwright() as p:
-            # Launch browser with human-like parameters
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
             )
             page = await context.new_page()
             
-            # Navigate to the listings
-            await page.goto(self.base_url, wait_until="domcontentloaded")
-            
-            # Handle cookies if present (common in Europe)
             try:
-                cookie_button = await page.get_by_role("button", name=re.compile("Aceptar", re.I)).first
-                if await cookie_button.is_visible():
-                    await cookie_button.click()
-            except:
-                pass
+                # Vamos a la lista de "Particulares" directamente si es posible
+                url = f"https://www.milanuncios.com/venta-de-viviendas-en-{self.city}/?fromSearch=1&demanda=n"
+                logger.info(f"Capturando lista: {url}")
+                await page.goto(url, wait_until="networkidle", timeout=60000)
+                
+                # Scroll para cargar mínimo 100 anuncios
+                for _ in range(5):
+                    await page.mouse.wheel(0, 1500)
+                    await asyncio.sleep(1)
+                
+                cards = await page.query_selector_all("article")
+                logger.info(f"Procesando {len(cards)} anuncios encontrados...")
 
-            # Wait for list to load
-            await page.wait_for_selector("article", timeout=10000)
-            
-            # Extract items
-            cards = await page.query_selector_all("article")
-            logger.info(f"Found {len(cards)} property cards")
+                for card in cards:
+                    try:
+                        text_content = await card.inner_text()
+                        title_el = await card.query_selector("h2")
+                        price_el = await card.query_selector(".ma-AdPrice-value")
+                        link_el = await card.query_selector("a")
+                        
+                        if not title_el or not price_el: continue
+                        
+                        title = await title_el.inner_text()
+                        price_raw = await price_el.inner_text()
+                        price = int(re.sub(r'[^\d]', '', price_raw))
+                        href = await link_el.get_attribute("href")
+                        url_prop = f"https://www.milanuncios.com{href}" if href.startswith("/") else href
+                        
+                        # EXTRACCIÓN INTELIGENTE DE CARACTERÍSTICAS (Sin entrar al anuncio)
+                        rooms_match = re.search(r'(\d+)\s*hab', text_content, re.IGNORECASE)
+                        rooms = int(rooms_match.group(1)) if rooms_match else None
+                        
+                        has_terrace = any(x in text_content.lower() for x in ["terraza", "balcón", "exterior"])
+                        has_garage = any(x in text_content.lower() for x in ["garaje", "parking", "cochera", "plaza"])
+                        
+                        size_match = re.search(r'(\d+)\s*m²', text_content)
+                        size = int(size_match.group(1)) if size_match else 0
 
-            for card in cards:
-                try:
-                    # 1. Extract Basic Data
-                    title_el = await card.query_selector("h3, .ma-AdCardV2-title")
-                    title = await title_el.inner_text() if title_el else "No Title"
-                    
-                    price_el = await card.query_selector(".ma-AdValue-value")
-                    price_text = await price_el.inner_text() if price_el else "0"
-                    price = float(re.sub(r'[^\d.]', '', price_text.replace('.', '').replace(',', '.')))
-                    
-                    url_el = await card.query_selector("a")
-                    href = await url_el.get_attribute("href") if url_el else ""
-                    url = f"https://www.milanuncios.com{href}" if href.startswith("/") else href
-                    
-                    external_id = url.split("-")[-1].replace(".htm", "") if "-" in url else "unknown"
+                        prop = {
+                            "external_id": url_prop.split("/")[-1].replace(".htm", ""),
+                            "source": self.source_name,
+                            "url": url_prop,
+                            "title": title,
+                            "price": price,
+                            "city": self.city.capitalize(),
+                            "neighborhood": self.city.capitalize(), # Por ahora usamos la ciudad como zona si no hay más info
+                            "size_m2": size,
+                            "rooms": rooms,
+                            "description": text_content[:500], # Guardamos el snippet para búsqueda directa
+                            "images": [],
+                            "opportunity_score": 80 if has_terrace or has_garage else 60,
+                            "opportunity_reasons": []
+                        }
+                        
+                        if has_terrace: prop["opportunity_reasons"].append("☀️ Terraza/Exterior")
+                        if has_garage: prop["opportunity_reasons"].append("🚗 Garaje/Parking")
+                        
+                        if prop["price"] > 10000:
+                            self.results.append(prop)
+                    except: continue
 
-                    # 2. Identify 'Particular'
-                    # Look for tags or labels
-                    card_text = await card.inner_text()
-                    is_individual = "Particular" in card_text
-                    
-                    # 3. Create Property Object
-                    prop = {
-                        "external_id": external_id,
-                        "source": self.source_name,
-                        "url": url,
-                        "title": title,
-                        "price": price,
-                        "is_individual": is_individual,
-                        "is_agency": not is_individual,
-                        "city": "Madrid", # Default for now
-                    }
-                    
-                    self.results.append(prop)
-                    
-                except Exception as e:
-                    logger.warning(f"Error parsing card: {e}")
+            except Exception as e:
+                logger.error(f"Error en super-barrido: {e}")
+            finally:
+                await browser.close()
 
-            await browser.close()
-            
-        logger.info(f"Extracted {len(self.results)} properties. Saving...")
+        # GUARDADO MASIVO (Forzamos el guardado de todo lo capturado)
         await self.save_results()
+        logger.info(f"✨ Ciclo completado: {len(self.results)} leads listos para mostrar.")
         return self.results
-
-if __name__ == "__main__":
-    scraper = MilanunciosScraper()
-    asyncio.run(scraper.scrape())

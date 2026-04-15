@@ -83,13 +83,35 @@ export default function SettingsView({ insforge }) {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Superficie mín. (m²)</label>
+            <input 
+              type="number" 
+              value={settings.min_size_m2} 
+              onChange={(e) => setSettings({...settings, min_size_m2: parseInt(e.target.value)})}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00acee]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Máx. anuncios por portal</label>
+            <input 
+              type="number" 
+              value={settings.max_leads_per_portal || 10} 
+              onChange={(e) => setSettings({...settings, max_leads_per_portal: parseInt(e.target.value)})}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00acee]"
+            />
+          </div>
+        </div>
+
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">Superficie mín. (m²)</label>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Portales (Fotocasa, Habitaclia, Pisos.com...)</label>
           <input 
-            type="number" 
-            value={settings.min_size_m2} 
-            onChange={(e) => setSettings({...settings, min_size_m2: parseInt(e.target.value)})}
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00acee]"
+            type="text" 
+            placeholder="Fotocasa, Habitaclia, Pisos.com"
+            value={settings.portals || ''} 
+            onChange={(e) => setSettings({...settings, portals: e.target.value})}
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00acee] transition-all"
           />
         </div>
 

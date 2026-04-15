@@ -1,60 +1,83 @@
 import asyncio
-try:
-    from milanuncios_scraper import MilanunciosScraper
-    from idealista_scraper import IdealistaScraper
-except ImportError:
-    from scrapers.milanuncios_scraper import MilanunciosScraper
-    from scrapers.idealista_scraper import IdealistaScraper
 import logging
+import httpx
+import sys
+import os
 
-# Configure logging
+# Ensure shared directory is in path for imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from shared.insforge_connector import InsForgeConnector
+from scrapers.agency.director import DirectorAgent
+
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, 
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
 )
-logger = logging.getLogger("ScraperManager")
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-async def run_all_scrapers():
-    from shared.insforge_connector import InsForgeConnector
-    connector = InsForgeConnector(
-        oss_host="https://s7pytj95.eu-central.insforge.app",
-        api_key="ik_0ed6e333e7a2e51c6c94939d8d8afbcf"
-    )
-    
-    settings = await connector.get_settings()
-    if not settings:
-        logger.warning("No settings found, using defaults.")
-        cities = ["madrid", "barcelona"]
-    else:
-        cities = settings.get("cities", ["madrid", "barcelona"])
-        logger.info(f"Using settings: {settings}")
-
-    scrapers = []
-    for city in cities:
-        scrapers.append(MilanunciosScraper(city=city))
-        scrapers.append(IdealistaScraper(city=city))
-    
-    logger.info(f"Starting execution of {len(scrapers)} scrapers...")
-    tasks = [scraper.scrape() for scraper in scrapers]
-    await asyncio.gather(*tasks)
-    logger.info("All scrapers finished execution.")
+logger = logging.getLogger("HolanducIA_Worker")
 
 async def main():
-    scheduler = AsyncIOScheduler()
-    # Run once at startup
-    await run_all_scrapers()
-    # Then schedule every 30 minutes
-    scheduler.add_job(run_all_scrapers, 'interval', minutes=30)
-    scheduler.start()
+    # Cargamos desde variables de entorno (configuradas en .env o Docker)
+    oss_host = os.getenv("INSFORGE_URL", "https://s7pytj95.eu-central.insforge.app")
+    api_key = os.getenv("INSFORGE_ANON_KEY", "ik_0ed6e333e72e51c6c94939d8d8afbcf")
     
-    logger.info("Scheduler started. Running every 30 minutes.")
-    try:
+    if not api_key:
+        logger.error("❌ Error: INSFORGE_ANON_KEY no encontrada. Revisa tu archivo .env")
+        return
+
+    connector = InsForgeConnector(oss_host=oss_host, api_key=api_key)
+    director = DirectorAgent()
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    logger.info(f"🏢 HolanducIA Worker iniciado. Conectado a: {oss_host}")
+    
+    async with httpx.AsyncClient() as client:
         while True:
-            await asyncio.sleep(1)
-    except (KeyboardInterrupt, SystemExit):
-        pass
+            try:
+                # Buscamos una petición pendiente
+                url = f"{oss_host}/api/database/records/scraping_requests?status=eq.pending&limit=1"
+                response = await client.get(url, headers=headers)
+                
+                if response.status_code == 200:
+                    requests = response.json()
+                    if requests:
+                        request = requests[0]
+                        request_id = request['id']
+                        logger.info(f"🚀 Misión Recibida: {request_id}")
+                        
+                        # Marcamos como procesando para que otros workers no la cojan
+                        update_url = f"{oss_host}/api/database/records/scraping_requests?id=eq.{request_id}"
+                        await client.patch(update_url, json={"status": "processing"}, headers=headers)
+                        
+                        # Ejecutamos la lógica de rascado masivo
+                        # Pasar el request_id si el director lo necesita para contexto
+                        await director.execute_mission()
+                        
+                        # Marcamos como completada
+                        await client.patch(update_url, json={
+                            "status": "completed", 
+                            "processed_at": "now()"
+                        }, headers={**headers, "Prefer": "return=minimal"})
+                        
+                        logger.info(f"🏁 Misión cumplida con éxito: {request_id}")
+                    else:
+                        # No hay tareas, esperamos un poco
+                        pass
+                else:
+                    logger.error(f"Error de conexión con InsForge: {response.status_code}")
+                
+            except Exception as e:
+                logger.error(f"Error en el bucle del Worker: {e}")
+                
+            # Esperamos 5 segundos antes de la siguiente comprobación
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("👋 Worker detenido por el usuario.")
+

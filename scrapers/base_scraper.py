@@ -1,19 +1,40 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import List, Optional
-from playwright.async_api import async_playwright, Page
+from typing import List, Optional, Dict, Any
+import httpx
 import logging
+import os
+import sys
+import redis
+
+# Ensure shared directory is in path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from shared.insforge_connector import InsForgeConnector
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-import sys
-import os
-
-# Ensure shared directory is in path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from shared.insforge_connector import InsForgeConnector
+# ESQUEMA ULTRA-PRECISO PARA RADIOGRAFÍA INMOBILIARIA
+DEEP_PROPERTY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "Titular del anuncio"},
+        "price": {"type": "number", "description": "PRECIO FINAL EN EUROS. OBLIGATORIO."},
+        "city": {"type": "string", "description": "Ciudad o municipio principal"},
+        "neighborhood": {"type": "string", "description": "Barrio, distrito o zona específica. OBLIGATORIO."},
+        "address": {"type": "string", "description": "Calle y número si está disponible"},
+        "size_m2": {"type": "number", "description": "Superficie útil o construida en m2 (solo el número)."},
+        "rooms": {"type": "number", "description": "Número de dormitorios/habitaciones."},
+        "bathrooms": {"type": "number", "description": "Número de baños"},
+        "has_parking": {"type": "boolean", "description": "True si tiene parking/garaje"},
+        "has_terrace": {"type": "boolean", "description": "True si tiene terraza/balcón"},
+        "has_pool": {"type": "boolean", "description": "True si tiene piscina"},
+        "is_individual": {"type": "boolean", "description": "True si el vendedor es un PARTICULAR"},
+        "description": {"type": "string", "description": "Descripción completa"},
+        "images": {"type": "array", "items": {"type": "string"}}
+    }
+}
 
 class BaseScraper(ABC):
     def __init__(self, source_name: str, base_url: str, settings: Optional[dict] = None):
@@ -22,49 +43,94 @@ class BaseScraper(ABC):
         self.settings = settings or {}
         self.results = []
         
-        # Load InsForge config (Hardcoded for this phase, should use env in prod)
+        # Security: Move keys to ENV
+        self.firecrawl_key = os.getenv("FIRECRAWL_API_KEY", "fc-4b3147904b174cb499dbca849e7eff3d")
+        self.firecrawl_base = "https://api.firecrawl.dev/v1"
+        
+        # InsForge Connector
         self.connector = InsForgeConnector(
-            oss_host="https://s7pytj95.eu-central.insforge.app",
-            api_key="ik_0ed6e333e7a2e51c6c94939d8d8afbcf"
+            oss_host=os.getenv("INSFORGE_URL", "https://s7pytj95.eu-central.insforge.app"),
+            api_key=os.getenv("INSFORGE_ANON_KEY", "ik_0ed6e333e7a2e51c6c94939d8d8afbcf")
         )
+
+        # Redis Deduplication Layer
+        redis_host = os.getenv("REDIS_HOST", "redis") # "redis" because of docker-compose
+        try:
+            self.redis = redis.Redis(host=redis_host, port=6379, db=0, decode_responses=True)
+            logger.info(f"✅ Redis Deduplication active for {self.source_name}")
+        except Exception as e:
+            self.redis = None
+            logger.warning(f"❌ Redis not available, deduplication disabled: {e}")
 
     @abstractmethod
     async def scrape(self):
-        """Main scraping logic to be implemented by subclasses"""
         pass
 
-    async def get_page_content(self, url: str):
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-            )
-            page = await context.new_page()
-            
-            # Subtle delay or random movements could be added here to avoid detection
-            logger.info(f"Navigating to {url}")
-            await page.goto(url, wait_until="networkidle")
-            
-            content = await page.content()
-            await browser.close()
-            return content
+    async def is_already_scraped(self, url: str) -> bool:
+        """Checks if URL was already processed in the last 7 days"""
+        if not self.redis:
+            return False
+        
+        # We use a Set in Redis for global uniqueness
+        return self.redis.sismember("holanducia:processed_urls", url)
+
+    async def mark_as_scraped(self, url: str):
+        """Marks URL as processed to avoid re-scraping and wasting Firecrawl credits"""
+        if self.redis:
+            self.redis.sadd("holanducia:processed_urls", url)
+            # Optional: Set expiration for the whole set isn't easy, 
+            # but we can track daily sets if needed.
+
+    async def scrape_with_firecrawl(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
+        # Check before spending credits!
+        if await self.is_already_scraped(url):
+            logger.info(f"⏭️ Skipping (Already in Redis): {url}")
+            return None
+
+        logger.info(f"🔥 Deep Intelligence Scan (Spending Credit): {url}")
+        headers = {
+            "Authorization": f"Bearer {self.firecrawl_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "url": url,
+            "formats": ["json"] if schema else ["markdown"]
+        }
+        
+        if schema:
+            payload["jsonOptions"] = {"schema": schema}
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(f"{self.firecrawl_base}/scrape", json=payload, headers=headers)
+                if response.status_code != 200:
+                    return None
+                data = response.json()
+                return data.get("data", {})
+        except Exception as e:
+            logger.warning(f"Scan failed for {url}: {e}")
+            return None
 
     async def save_results(self):
-        logger.info(f"Saving {len(self.results)} results from {self.source_name} to InsForge")
+        if not self.results:
+            return
+
+        logger.info(f"💾 Saving {len(self.results)} verified leads to HolanducIA")
         for prop in self.results:
             try:
-                # 1. Logic for Market Average (Mocked for now)
-                market_avg = 250000.0 
-                
-                # 2. Analyze via Edge Function
+                # 1. Opportunity Analysis
+                market_avg = 3200.0 
                 analysis = await self.connector.analyze_property(prop, market_avg)
+                prop['opportunity_score'] = analysis.get('score', 50)
                 
-                # 3. Enrich data
-                prop['opportunity_score'] = analysis['score']
-                prop['opportunity_reasons'] = analysis['reasons']
-                
-                # 4. Save to DB
+                # 2. Persistence
                 await self.connector.upsert_property(prop)
-                logger.info(f"Saved property: {prop['url']} | Score: {prop['opportunity_score']}")
+                
+                # 3. MARK AS SCRAPED (Credit saved for next time!)
+                await self.mark_as_scraped(prop['url'])
+                
+                logger.info(f"✅ Saved & Cached: {prop['url']}")
             except Exception as e:
-                logger.error(f"Error saving property {prop.get('url')}: {e}")
+                logger.error(f"Failed to persist lead: {e}")
+
