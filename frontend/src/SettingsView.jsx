@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Save, RefreshCw, Plus, X, Globe, Settings2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 export default function SettingsView({ insforge }) {
   const [settings, setSettings] = useState({
@@ -75,6 +76,8 @@ export default function SettingsView({ insforge }) {
     setSettings({ ...settings, facebook_groups: settings.facebook_groups.filter(g => g !== id) })
   }
 
+  const [notification, setNotification] = useState(null)
+
   const handleManualUpdate = async () => {
     setSaving(true)
     await handleSave()
@@ -88,15 +91,35 @@ export default function SettingsView({ insforge }) {
       })
 
     if (!error) {
-      alert('🚀 ¡Misión lanzada! El radar está escaneando los grupos.')
+      setNotification('🚀 ¡Radar Activado! El robot está escaneando los grupos ahora mismo.')
+      setTimeout(() => setNotification(null), 5000)
     }
     setSaving(false)
   }
 
-  if (loading) return <div className="p-12 text-slate-400 font-medium">Cargando radar...</div>
+  if (loading) return <div className="p-12 text-slate-400 font-medium italic">Sincronizando sistemas...</div>
 
   return (
     <div className="p-8 lg:p-12 max-w-2xl animate-in fade-in duration-500 pb-32">
+      {/* Notificación Nativa Premium */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-slate-900 text-white px-8 py-5 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 min-w-[400px]"
+          >
+            <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center animate-pulse">
+                <RefreshCw size={20} className="text-white" />
+            </div>
+            <div>
+                <p className="text-white font-black text-sm uppercase tracking-widest italic">{notification}</p>
+                <div className="h-1 bg-emerald-500 mt-2 rounded-full animate-[progress_5s_linear]" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-12">
         <div>
           <h1 className="text-4xl font-black text-slate-900 tracking-tight">Configuración</h1>
