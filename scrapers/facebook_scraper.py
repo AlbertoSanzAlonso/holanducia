@@ -101,13 +101,19 @@ class FacebookScraper(BaseScraper):
                     is_real_estate = any(kw in content_lower for kw in ['piso', 'casa', 'alquiler', 'vendo', 'vivienda', 'chalet', 'inmueble'])
                     if is_real_estate:
                         logger.info(f"  ✅ ¡Oportunidad detectada en móvil!")
+                        
+                        # Generar una ID única basada en el contenido para evitar duplicados
+                        import hashlib
+                        content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
+                        
                         self.results.append({
+                            "external_id": f"FB-{content_hash}",
                             "title": content[:100].replace('\n', ' ') + "...",
                             "description": content,
                             "price": self._extract_price(content_lower),
                             "city": "Málaga",
                             "source": "Facebook",
-                            "url": self.group_url,
+                            "url": self.group_url + "/" + content_hash, # URL ficticia única
                             "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000"]
                         })
                 except: continue
