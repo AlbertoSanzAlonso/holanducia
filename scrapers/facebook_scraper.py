@@ -54,6 +54,15 @@ class FacebookScraper(BaseScraper):
                 await page.evaluate("window.scrollBy(0, 1500)")
                 await page.wait_for_timeout(2500)
 
+            # 2.5 Expandir todas las descripciones ("Ver más")
+            logger.info("📄 Expandiendo descripciones largas...")
+            see_more_btns = await page.query_selector_all('text="Ver más", text="See more", text="Más", text="Ещё"')
+            for btn in see_more_btns:
+                try:
+                    if await btn.is_visible(): await btn.click()
+                except: continue
+            await page.wait_for_timeout(2000)
+
             # 3. Extracción con selectores móviles precisos
             posts = await page.query_selector_all('article, div[role="article"]')
             logger.info(f"📊 {len(posts)} publicaciones encontradas. Analizando calidad...")
