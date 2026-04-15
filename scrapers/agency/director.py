@@ -12,8 +12,12 @@ class DirectorAgent:
         self.insforge = InsForgeConnector()
         self.max_parallel_groups = 3 # Límite para no saturar la RAM
         
-    async def execute_mission(self, quota: int = 10):
+    async def execute_mission(self, quota: int = 10, request: Dict[str, Any] = None):
         """Coordina múltiples agentes para alcanzar la cuota de leads requerida"""
+        # Si viene un request, extraemos la cuota de ahí
+        if request and "lead_quota" in request:
+            quota = request["lead_quota"]
+            
         logger.info(f"🕵️‍♂️ Iniciando Misión de Captación Masiva. Objetivo: {quota} leads nuevos.")
         
         # 1. Obtenemos configuración (Grupos de Facebook autorizados)
