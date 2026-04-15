@@ -6,7 +6,7 @@ import {
   Trash2, Edit3, Save, RotateCcw
 } from 'lucide-react';
 
-const PropertyIntelligenceModal = ({ property: initialProperty, onClose, onUpdate, onDelete }) => {
+const PropertyIntelligenceModal = ({ property: initialProperty, categories, onClose, onUpdate, onDelete }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [property, setProperty] = useState(initialProperty);
   const [saving, setSaving] = useState(false);
