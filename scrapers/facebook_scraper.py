@@ -109,12 +109,21 @@ class FacebookScraper(BaseScraper):
                     await page.mouse.wheel(0, 1200)
                     await page.wait_for_timeout(1200)
 
-                # Mandamos los fragmentos a analizar
-                logger.info(f"📑 Analizando {len(unique_posts)} candidatos reales con OpenAI...")
+                # Mandamos los fragmentos a analizar con ESCUDO DE AHORRO
+                logger.info(f"📑 Analizando {len(unique_posts)} candidatos con Escudo de Ahorro activo...")
+                estate_keywords = [
+                    'piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'venta', 'chalet', 'inmueble', 
+                    'hab', 'dorm', 'baño', 'estudio', 'loft', 'duplex', 'finca', 'apartamento', 
+                    '€', 'euro', 'precio', 'm2', 'particular', 'inmobiliaria', 'comunidad'
+                ]
+                
                 for post_text in unique_posts:
-                    if total_leads >= self.limit: 
-                        logger.info("🎯 Cuota de misión alcanzada.")
-                        break
+                    if total_leads >= self.limit: break
+                    
+                    # FILTRO LOCAL (Coste 0 tokens)
+                    text_lower = post_text.lower()
+                    if not any(k in text_lower for k in estate_keywords):
+                        continue # Descartado localmente por no parecer inmobiliario
                     
                     # Usamos "Facebook" como nombre de fuente limpio
                     ai_data = await self.analyst.parse_raw_text(post_text, "Facebook")
