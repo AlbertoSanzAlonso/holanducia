@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, RefreshCw, Plus, X, Facebook, Settings2 } from 'lucide-react'
+import { Save, RefreshCw, Plus, X, Globe, Settings2 } from 'lucide-react'
 
 export default function SettingsView({ insforge }) {
   const [settings, setSettings] = useState({
