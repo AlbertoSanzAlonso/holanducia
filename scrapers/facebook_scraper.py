@@ -56,8 +56,10 @@ class FacebookScraper(BaseScraper):
                     logger.info(f"   🚜 Escaneo {scroll_idx}: Aspirador trabajando...")
 
             # 3. EXTRACCIÓN MASIVA SOBRE EL BLOQUE ACUMULADO
-            fragments = re.split(r'Me gusta|Compartir|Me encanta|Comentar', accumulated_text)
-            logger.info(f"📑 Analizando {len(fragments)} fragmentos acumulados...")
+            # Usamos separadores más comunes en la versión móvil (Marcas de tiempo y botones de acción)
+            split_pattern = r'Me gusta|Compartir|Me encanta|Comentar|Ver más|See more| \d+[mhj] | \d+d | Ayer | Just now'
+            fragments = re.split(split_pattern, accumulated_text)
+            logger.info(f"📑 Analizando {len(fragments)} fragmentos detectados por marcas de tiempo...")
             
             seen_hashes = set()
             for frag in fragments:
