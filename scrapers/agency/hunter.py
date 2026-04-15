@@ -15,7 +15,9 @@ class HunterAgent(BaseAgent):
         search_urls = {
             "Fotocasa": f"https://www.fotocasa.es/es/comprar/viviendas/{city}-provincia/todas-las-zonas/l",
             "Habitaclia": f"https://www.habitaclia.com/comprar-vivienda-en-{city}/listado.htm",
-            "Pisos.com": f"https://www.pisos.com/venta/pisos-{city}/"
+            "Pisos.com": f"https://www.pisos.com/venta/pisos-{city}/",
+            "Facebook": f"https://www.facebook.com/groups/41757906864", # Grupo por defecto
+            "Catastro": f"https://subastas.boe.es/subastas_ava.php?campo%5B0%5D=SUBASTA.ESTADO&dato%5B0%5D=PC&campo%5B1%5D=SUBASTA.TIPO_BIEN&dato%5B1%5D=I&campo%5B6%5D=BIEN.PROVINCIA&dato%5B6%5D={city.upper()}"
         }
         
         url = search_urls.get(portal)
