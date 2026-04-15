@@ -13,17 +13,22 @@ export default async function(req: Request) {
     if (body.raw_text) {
       console.log("🧠 Extrayendo datos semánticos con IA...")
       
-      const { data, error } = await insforge.ai.extract(body.raw_text, {
-        schema: {
-          title: "string (Atractivo y breve)",
-          price: "number (Solo el número)",
-          city: "string (Ej: Benalmádena, Torremolinos, Málaga)",
-          rooms: "number",
-          size_m2: "number",
-          is_individual: "boolean (true si es particular)",
-          opportunity_score: "number (0-100, basado en si parece barato o buena inversión)"
+      const { data, error } = await insforge.ai.generate(
+        `Extract real estate data from this property listing. Return JSON ONLY.
+        Text: ${body.raw_text}`,
+        {
+          json: true,
+          schema: {
+            title: "string (Example: Loft reformado en Arroyo de la Miel)",
+            price: "number (Only the digits)",
+            city: "string (Example: Benalmádena, Torremolinos, Málaga)",
+            rooms: "number",
+            size_m2: "number",
+            is_individual: "boolean (true if private owner, false if agency)",
+            opportunity_score: "number (0-100 score based on investment potential)"
+          }
         }
-      })
+      )
 
       if (error) throw error
       return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } })
@@ -49,7 +54,7 @@ export default async function(req: Request) {
     return new Response(JSON.stringify({ 
       score: Math.min(100, score), 
       reasons,
-      opportunity_score: score // Alias para compatibilidad
+      opportunity_score: score
     }), { headers: { "Content-Type": "application/json" } })
 
   } catch (err: any) {

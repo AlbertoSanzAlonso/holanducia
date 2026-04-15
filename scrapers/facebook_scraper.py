@@ -11,10 +11,11 @@ from agency.analyst import AnalystAgent
 logger = logging.getLogger(__name__)
 
 class FacebookScraper(BaseScraper):
-    def __init__(self, group_id: str, limit: int = 10):
-        self.group_url = f"https://m.facebook.com/groups/{group_id}"
-        super().__init__(source_name="Facebook", base_url=self.group_url)
+    def __init__(self, group_url, limit=50):
+        super().__init__("Facebook", base_url="https://facebook.com")
+        self.group_url = group_url
         self.limit = limit
+        self.results = []
         self.user = os.getenv("FB_USER")
         self.password = os.getenv("FB_PASSWORD")
         self.session_path = "/app/fb_session.json"
@@ -90,7 +91,7 @@ class FacebookScraper(BaseScraper):
                 unique_url = f"{self.group_url}?post_id={f_hash[:16]}"
                 
                 # 3. Ahora sí, comprobamos si este "Piso + Precio" ya existe
-                if await self.deduplicator.is_duplicate(unique_url):
+                if await self.is_already_scraped(unique_url):
                     logger.info(f"⏭️  Omitiendo duplicado semántico: {ai_data['title']}")
                     continue
 
