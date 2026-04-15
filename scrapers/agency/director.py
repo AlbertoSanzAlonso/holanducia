@@ -60,15 +60,21 @@ class DirectorAgent:
         for city in cities:
             for portal in portals:
                 self.logger.info(f"Tasking Hunter with {portal} in {city}")
-                urls = await self.hunter.discover(portal, city)
+                
+                # Si el portal ya es una URL de Facebook, la usamos directamente
+                if "facebook.com/groups/" in portal:
+                    urls = [portal]
+                else:
+                    urls = await self.hunter.discover(portal, city)
 
-                if "facebook.com" in (urls[0] if urls else ""):
-                    # RUTA ESPECIAL PARA FACEBOOK
+                if urls and "facebook.com" in urls[0]:
                     from scrapers.facebook_scraper import FacebookScraper
-                    for url in urls:
+                    for fb_url in urls:
                         try:
-                            group_id = url.split("groups/")[1].split("/")[0]
-                            scraper = FacebookScraper(group_id, limit=max_leads)
+                            # Extraer ID del grupo de forma robusta
+                            group_part = fb_url.split("groups/")[1].split("/")[0].split("?")[0]
+                            self.logger.info(f"🚀 Infiltrating FB Group: {group_part}")
+                            scraper = FacebookScraper(group_part, limit=max_leads)
                             leads = await scraper.scrape()
                             if leads:
                                 for lead in leads:
@@ -78,9 +84,9 @@ class DirectorAgent:
                                         cleaned['images'] = lead['images']
                                         await self.connector.upsert_property(cleaned)
                         except Exception as e:
-                            self.logger.error(f"Error in automatic FB scrape: {e}")
+                            self.logger.error(f"Error in FB group scrape ({fb_url}): {e}")
                 else:
-                    # RUTA NORMAL PARA OTROS PORTALES (Firecrawl + AI)
+                    # OTROS PORTALES (Firecrawl)
                     if urls:
                         self.logger.info(f"Tasking Analyst with {len(urls)} candidates.")
                         await self.analyst.analyze(urls, limit=max_leads)
