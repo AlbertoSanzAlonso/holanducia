@@ -35,6 +35,11 @@ class DirectorAgent:
 
         logger.info(f"🕵️‍♂️ Iniciando Misión de Captación Masiva. Objetivo: {quota} leads nuevos.")
         
+        # Rotación Inteligente: Barajamos los grupos para no favorecer siempre a los mismos
+        import random
+        random.shuffle(fb_groups)
+        logger.info(f"🔄 Orden de patrulla para esta misión: {fb_groups}")
+        
         # 1. Ejecución Secuencial para máxima estabilidad
         scraper = FacebookScraper(fb_groups[0], limit=quota)
         results_count = await scraper.scrape_multiple(fb_groups)
