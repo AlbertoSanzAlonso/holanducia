@@ -35,13 +35,16 @@ class DirectorAgent:
             self.logger.error("No user settings found. Mission Aborted.")
             return
 
-        cities = settings.get("cities", ["madrid"])
+        cities = settings.get("cities") or [""] # Si está vacío, ejecutamos una vez con ciudad vacía
         portals_raw = settings.get("portals")
-        portals = [p.strip() for p in portals_raw.split(",")] if portals_raw else ["Fotocasa"]
+        portals = [p.strip() for p in portals_raw.split(",")] if portals_raw else ["Facebook"]
         max_leads = settings.get("max_leads_per_portal", 10)
-        max_price = settings.get("max_price", 300000)
+        
+        # Filtros opcionales (pueden venir vacíos)
+        max_price = settings.get("max_price")
+        min_rooms = settings.get("min_rooms")
 
-        self.logger.info(f"Mass Infiltration: {len(portals)} portals in {len(cities)} cities.")
+        self.logger.info(f"Mass Infiltration: {len(portals)} portals. Cities: {cities if cities[0] else 'All'}")
 
         for city in cities:
             for portal in portals:

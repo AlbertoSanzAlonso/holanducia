@@ -101,10 +101,10 @@ export default function SettingsView({ insforge }) {
           <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Ciudades de rastreo</label>
           <input 
             type="text" 
-            placeholder="madrid, barcelona, malaga..."
-            value={settings.cities.join(', ')} 
-            onChange={(e) => setSettings({...settings, cities: e.target.value.split(',').map(s => s.trim())})}
-            className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-transparent focus:border-[#00acee] focus:bg-white focus:ring-4 focus:ring-blue-50 outline-none transition-all font-medium"
+            placeholder="Ej: malaga, benalmadena (dejar vacío para rastrear todo)"
+            value={(settings.cities || []).join(', ')} 
+            onChange={(e) => setSettings({...settings, cities: e.target.value ? e.target.value.split(',').map(s => s.trim()) : []})}
+            className="w-full px-4 py-3 bg-slate-100 rounded-xl border border-transparent focus:border-[#00acee] focus:bg-white focus:ring-4 focus:ring-blue-50 outline-none transition-all font-medium"
           />
         </div>
 
@@ -185,12 +185,6 @@ export default function SettingsView({ insforge }) {
         </button>
       </div>
 
-      <div className="mt-8 p-6 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex gap-4 items-start">
-        <div className="bg-blue-500 text-white p-2 rounded-lg">🚀</div>
-        <p className="text-sm text-blue-800 leading-relaxed">
-          <strong>Configuración Premium:</strong> Estos filtros se aplican a todos los agentes. El botón "Actualizar ahora" dispara una misión inmediata en tu servidor de Hetzner.
-        </p>
-      </div>
     </div>
   )
 }
