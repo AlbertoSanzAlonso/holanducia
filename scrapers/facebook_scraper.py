@@ -50,20 +50,35 @@ class FacebookScraper(BaseScraper):
 
                 await page.fill('input[name="email"]', self.user)
                 await page.fill('input[name="pass"]', self.password)
-                await page.keyboard.press("Enter")
+                
+                # Intentar click en el botón de login explícitamente
+                login_btn_selectors = ['button[name="login"]', 'button[type="submit"]', '[data-testid="royal_login_button"]']
+                for s in login_btn_selectors:
+                    try:
+                        btn = await page.query_selector(s)
+                        if btn: await btn.click(); break
+                    except: continue
+                else:
+                    await page.keyboard.press("Enter")
+                
                 await page.wait_for_timeout(10000) 
                 
+                # Saltar el aviso de "Guardar información de inicio de sesión"
+                save_info_btn = await page.query_selector('text="Ahora no"') or await page.query_selector('div[role="button"]:has-text("Ahora no")')
+                if save_info_btn:
+                    await save_info_btn.click()
+                    await page.wait_for_timeout(2000)
+
                 # Detectar Checkpoint de seguridad
                 if "checkpoint" in page.url or await page.query_selector('input[name="approvals_code"]'):
-                    logger.error(f"🚨 BLOQUEO DE SEGURIDAD detectado. URL: {page.url}")
-                    # Avisamos a la base de datos para que la App lo muestre
-                    await self.connector.upsert_scraping_status("security_block", f"Facebook requiere verificación: {page.url}")
+                    logger.error(f"🚨 BLOQUEO DE SEGURIDAD detectado en {page.url}")
+                    await self.connector.upsert_scraping_status("security_block", f"Facebook requiere verificación en {page.url}")
                     await context.storage_state(path=self.session_path)
                     await browser.close()
                     return
 
                 await context.storage_state(path=self.session_path)
-                logger.info("✅ Sesión guardada.")
+                logger.info(f"✅ Sesión guardada. Título actual: {await page.title()}")
 
             # 2. Ir al grupo
             await page.goto(self.group_url, wait_until="domcontentloaded")
