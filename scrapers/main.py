@@ -16,9 +16,9 @@ logging.basicConfig(
 logger = logging.getLogger("HolanducIA_Worker")
 
 async def main():
-    # Cargamos desde variables de entorno (configuradas en .env o Docker)
-    oss_host = os.getenv("INSFORGE_URL", "https://s7pytj95.eu-central.insforge.app")
-    api_key = os.getenv("INSFORGE_ANON_KEY", "ik_0ed6e333e72e51c6c94939d8d8afbcf")
+    # Cargamos desde variables de entorno
+    oss_host = os.getenv("INSFORGE_URL")
+    api_key = os.getenv("INSFORGE_ANON_KEY")
     
     if not api_key:
         logger.error("❌ Error: INSFORGE_ANON_KEY no encontrada. Revisa tu archivo .env")

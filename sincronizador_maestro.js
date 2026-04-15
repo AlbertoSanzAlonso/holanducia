@@ -3,8 +3,8 @@
 // El sistema se encargará de "mirar" lo que tú ves y enviarlo a tu Dashboard.
 
 (async function() {
-  const INSFORGE_URL = "https://s7pytj95.eu-central.insforge.app";
-  const ANON_KEY = "ik_0ed6e333e7a2e51c6c94939d8d8afbcf";
+  const INSFORGE_URL = ""; // Añadir URL de producción en el momento de uso
+  const ANON_KEY = ""; // Añadir ANON_KEY de producción en el momento de uso
 
   console.log("🚀 HolanducIA: Sincronizador Activado. Ve navegando por la lista de inmuebles...");
 

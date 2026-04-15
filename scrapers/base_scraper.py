@@ -43,14 +43,14 @@ class BaseScraper(ABC):
         self.settings = settings or {}
         self.results = []
         
-        # Security: Move keys to ENV
-        self.firecrawl_key = os.getenv("FIRECRAWL_API_KEY", "fc-4b3147904b174cb499dbca849e7eff3d")
+        # Security: Keys MUST be in ENV
+        self.firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
         self.firecrawl_base = "https://api.firecrawl.dev/v1"
         
         # InsForge Connector
         self.connector = InsForgeConnector(
-            oss_host=os.getenv("INSFORGE_URL", "https://s7pytj95.eu-central.insforge.app"),
-            api_key=os.getenv("INSFORGE_ANON_KEY", "ik_0ed6e333e7a2e51c6c94939d8d8afbcf")
+            oss_host=os.getenv("INSFORGE_URL"),
+            api_key=os.getenv("INSFORGE_ANON_KEY")
         )
 
         # Redis Deduplication Layer
