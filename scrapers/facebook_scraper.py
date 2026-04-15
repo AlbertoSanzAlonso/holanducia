@@ -27,21 +27,25 @@ class FacebookScraper(BaseScraper):
             context = await browser.new_context(**iphone)
             page = await context.new_page()
 
-            # 1. Navegación y Login (se mantiene igual, es sólido)
             await page.goto(self.group_url, wait_until="domcontentloaded")
             await page.wait_for_timeout(5000)
 
             if await page.query_selector('input[name="email"]') or "login" in page.url:
                 await self._perform_login(page, context)
 
-            # 2. Excavación con detección por contenido (No por etiquetas)
-            logger.info(f"🚜 Escaneando profundamente (Objetivo: {self.limit} leads de calidad)...")
+            # 2. Excavación con ACUMULACIÓN (Para que no se le olvide nada)
+            logger.info(f"🚜 Aspirando contenido (Objetivo: {self.limit} leads de calidad)...")
+            accumulated_text = ""
             
             for scroll_idx in range(25):
-                await page.evaluate("window.scrollBy(0, 3000)")
-                await page.wait_for_timeout(2500)
+                # Capturamos lo que hay visible ahora antes de que desaparezca
+                visible_text = await page.evaluate('() => document.body.innerText')
+                accumulated_text += "\n" + visible_text
                 
-                # Clic en "Ver más" de forma constante durante el scroll
+                await page.evaluate("window.scrollBy(0, 3000)")
+                await page.wait_for_timeout(2000)
+                
+                # Clic en "Ver más"
                 try:
                     expand_btns = await page.query_selector_all('text="Ver más", text="See more", text="ver mais"')
                     for b in expand_btns: 
@@ -49,43 +53,32 @@ class FacebookScraper(BaseScraper):
                 except: pass
                 
                 if scroll_idx % 5 == 0:
-                    # Usamos JS para contar bloques de texto con interés inmobiliario real
-                    found_count = await page.evaluate('''() => {
-                        const texts = document.body.innerText.split('Compartir');
-                        return texts.filter(t => t.toLowerCase().includes('piso') || t.toLowerCase().includes('casa') || t.toLowerCase().includes('vivienda')).length;
-                    }''')
-                    logger.info(f"   🚜 Escaneo {scroll_idx}: ~{found_count} candidatos potenciales detectados...")
+                    logger.info(f"   🚜 Escaneo {scroll_idx}: Aspirador trabajando...")
 
-            # 3. EXTRACCIÓN POR FRAGMENTACIÓN (La técnica definitiva)
-            # Facebook oculta los posts, pero el texto está ahí. Vamos a fragmentar por "Compartir" u otro separador común.
-            raw_text = await page.evaluate('() => document.body.innerText')
-            # Los posts en m.facebook suelen terminar o tener cerca la palabra "Compartir" o "Me gusta"
-            fragments = re.split(r'Me gusta|Compartir|Me encanta', raw_text)
-            
-            logger.info(f"📑 Analizando {len(fragments)} fragmentos de texto en bruto...")
+            # 3. EXTRACCIÓN MASIVA SOBRE EL BLOQUE ACUMULADO
+            fragments = re.split(r'Me gusta|Compartir|Me encanta|Comentar', accumulated_text)
+            logger.info(f"📑 Analizando {len(fragments)} fragmentos acumulados...")
             
             seen_hashes = set()
             for frag in fragments:
                 if len(self.results) >= self.limit: break
                 
                 clean_frag = frag.strip()
-                if len(clean_frag) < 100: continue
+                if len(clean_frag) < 80: continue
                 
-                # Deduplicación por hash
-                f_hash = hashlib.md5(clean_frag[:200].encode()).hexdigest()
+                f_hash = hashlib.md5(clean_frag.encode()).hexdigest()
                 if f_hash in seen_hashes: continue
                 seen_hashes.add(f_hash)
 
-                # Si el fragmento tiene chicha inmobiliaria, lo guardamos
-                if any(kw in clean_frag.lower() for kw in ['piso', 'casa', 'alquiler', 'vendo', 'hab', 'baño']):
+                if any(kw in clean_frag.lower() for kw in ['piso', 'casa', 'alquiler', 'vendo', 'hab', 'baño', 'estudio', 'loft']):
                     self.results.append({
                         "description": clean_frag,
-                        "url": f"{self.group_url}?post_id={f_hash}", # URL Única para evitar colisiones
+                        "url": f"{self.group_url}?post_id={f_hash[:8]}",
                         "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa"]
                     })
 
             await browser.close()
-            logger.info(f"✅ Extracción finalizada: {len(self.results)} candidatos enviados al Analista.")
+            logger.info(f"✅ Extracción finalizada: {len(self.results)} candidatos reales encontrados.")
             return self.results
 
     async def _perform_login(self, page, context):
