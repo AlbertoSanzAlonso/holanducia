@@ -145,6 +145,9 @@ class FacebookScraper(BaseScraper):
                     # Usamos "Facebook" como nombre de fuente limpio
                     ai_data = await self.analyst.parse_raw_text(post_text, "Facebook")
                     if ai_data:
+                        # Filtramos campos que NO existen en la DB para evitar Errores 400
+                        ai_data.pop("is_real_estate", None)
+                        
                         # Generar hash para deduplicación
                         f_hash = hashlib.md5(f"{ai_data['title']}{ai_data['price']}".encode()).hexdigest()[:12]
                         if await self.is_already_scraped(f_hash): 
