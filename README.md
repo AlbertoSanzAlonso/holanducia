@@ -2,45 +2,29 @@
 
 A high-performance system designed to capture, analyze, and notify "Flash Opportunities" in the real estate market.
 
-## 🚀 Quick Start
+## 🚀 Production Setup (Hetzner + Coolify)
 
-### 1. Infrastructure
-Ensure you have Docker installed and run:
+1.  **Server**: Hetzner CX33 (4 vCPU, 8GB RAM).
+2.  **Deployment**: Coolify (Docker Compose Build Pack).
+3.  **Port**: API exposed on port `8080`.
+4.  **Optimization**: Redis deduplication layer active to save Firecrawl credits.
+
+### Local Development
 ```bash
-cd docker
-docker-compose up -d
+docker compose up -d
+# Run API
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+# Run Worker
+python scrapers/main.py
 ```
 
-### 2. Backend
-Install dependencies and run the API:
-```bash
-cd backend
-pip install -r requirements.txt # Or use your preferred env manager
-uvicorn app.main:app --reload
-```
-
-### 3. Scrapers
-Install Playwright and run a scraper:
-```bash
-cd scrapers
-pip install -r requirements.txt
-playwright install chromium
-python milanuncios_scraper.py
-```
-
-## 🧠 Features (Current Status - Phase 1)
-- [x] **Core Backend**: FastAPI architecture initialized.
-- [x] **Database**: Ready for TimescaleDB (Time-series for price trends).
-- [x] **Intelligence**: Opportunity Scoring logic implemented (Price drops + Market comparison).
-- [x] **Ingestion**: Base Playwright scraper structure ready.
-
-## 🛠️ Roadmap
-- **Fase 1**: Finish Idealista/Milanuncios scraper logic and DB integration.
-- **Fase 2**: Integrate Catastro API for data enrichment.
-- **Fase 3**: Implement GPT-4o Vision for photo analysis (e.g., "Reforma necesaria").
+## 🧠 Intelligence Engine
+- **Strategy**: Hybrid approach using InsForge (BaaS) and a private VPS (Scrapers).
+- **Deduplication**: Redis-based filtering before Firecrawl extraction.
+- **Scoring**: Deep analysis based on price trends and catastro data.
 
 ## 📁 Structure
-- `/backend`: FastAPI service.
-- `/scrapers`: Playwright/Scrapy ingestion layer.
-- `/docker`: DB/Redis configuration.
-- `/shared`: Common schemas for consistency.
+- `/backend`: FastAPI service (Port 8080 prod / 8000 local).
+- `/scrapers`: Playwright/Firecrawl ingestion layer.
+- `docker-compose.yaml`: Unified production config.
+- `shared/`: Common schemas and connectors.

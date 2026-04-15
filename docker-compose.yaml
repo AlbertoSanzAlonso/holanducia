@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # La API de FastAPI
+  # La API de FastAPI (Puerto 8080 para evitar conflicto con Coolify)
   api:
     build: 
       context: .
@@ -9,8 +9,7 @@ services:
     container_name: holanducia_api
     restart: always
     ports:
-      - "8000:8000"
-    # Las variables se inyectan desde el panel de Coolify
+      - "8080:8000"
 
   # El Worker que ejecuta los scrapers
   worker:
