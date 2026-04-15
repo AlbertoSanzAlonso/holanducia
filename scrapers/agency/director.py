@@ -1,25 +1,26 @@
-import asyncio
+import os
+import logging
+from scrapers.insforge_connector import InsForgeConnector
 from scrapers.agency.hunter import HunterAgent
 from scrapers.agency.analyst import AnalystAgent
-from scrapers.agency.base_agent import BaseAgent
 
-class DirectorAgent(BaseAgent):
+class DirectorAgent:
     def __init__(self):
-        super().__init__("Director")
+        self.logger = logging.getLogger("Agency.Director")
+        self.connector = InsForgeConnector()
         self.hunter = HunterAgent()
         self.analyst = AnalystAgent()
 
     async def execute_mission(self, request=None):
         self.logger.info("Starting Mission: AI Intelligence Infiltration")
         
-        # Si tenemos una petición específica con URL (ej: Facebook)
+        # CASO 1: Petición específica con URL (ej: Facebook o Idealista puntual)
         if request and request.get('url'):
             url = request['url']
             self.logger.info(f"🎯 Target Acquired: {url}")
             
             if "facebook.com" in url:
                 from scrapers.facebook_scraper import FacebookScraper
-                # Extraer Group ID
                 try:
                     group_id = url.split("groups/")[1].split("/")[0]
                     scraper = FacebookScraper(group_id)
@@ -28,60 +29,39 @@ class DirectorAgent(BaseAgent):
                     self.logger.error(f"Error parsing Facebook URL: {e}")
                 return # Misión específica terminada
         
+        # CASO 2: Misión General Automática (Basada en Settings)
         settings = await self.connector.get_settings()
         if not settings:
-            self.logger.error("Could not fetch settings. Mission aborted.")
+            self.logger.error("No user settings found. Mission Aborted.")
             return
 
-        cities_raw = settings.get("cities", "madrid")
-        if isinstance(cities_raw, list):
-            cities = cities_raw
-        else:
-            cities = cities_raw.split(",")
-            
-        max_price = settings.get("max_price", 500000)
-        max_leads = settings.get("max_leads_per_portal", 10)
-        
-        # Dynamic Portals from settings (comma separated string)
+        cities = settings.get("cities", ["madrid"])
         portals_raw = settings.get("portals")
-        if portals_raw:
-            portals = [p.strip() for p in portals_raw.split(",")]
-        else:
-            portals = ["Fotocasa", "Habitaclia", "Pisos.com"]
-        
+        portals = [p.strip() for p in portals_raw.split(",")] if portals_raw else ["Fotocasa"]
+        max_leads = settings.get("max_leads_per_portal", 10)
+        max_price = settings.get("max_price", 300000)
+
+        self.logger.info(f"Mass Infiltration: {len(portals)} portals in {len(cities)} cities.")
+
         for city in cities:
-            city = str(city).strip()
             for portal in portals:
-                # 1. HUNTER: Find potential leads
-                potential_urls = await self.hunter.discover_leads(city, portal, f"hasta {max_price}€")
-                
-                # 2. DIRECTOR: Filter and LIMIT (SAVE CREDITS!)
-                new_urls = []
-                for url in potential_urls:
-                    if len(new_urls) >= max_leads: break
-                    if not await self.connector.check_property_exists(url):
-                        new_urls.append(url)
-                    else:
-                        self.logger.info(f"Skipping existing lead: {url}")
+                self.logger.info(f"Tasking Hunter with {portal} in {city}")
+                urls = await self.hunter.discover(portal, city)
 
-                self.logger.info(f"Tasking Analyst with {len(new_urls)} new leads (Limit: {max_leads}).")
-
-                # 3. ANALYST: Deep scrape new leads
-                for url in new_urls:
-                    property_data = await self.analyst.analyze_lead(url)
-                    if property_data:
-                        # 4. SAVE: Persist to InsForge
+                if "facebook.com" in (urls[0] if urls else ""):
+                    # RUTA ESPECIAL PARA FACEBOOK
+                    from scrapers.facebook_scraper import FacebookScraper
+                    for url in urls:
                         try:
-                            await self.connector.upsert_property(property_data)
-                            self.logger.info(f"Mission Success: Saved {property_data['title']}")
+                            group_id = url.split("groups/")[1].split("/")[0]
+                            scraper = FacebookScraper(group_id, limit=max_leads)
+                            await scraper.scrape()
                         except Exception as e:
-                            self.logger.error(f"Persistence error: {e}")
-                    
-                    # Small delay to respect rate limits
-                    await asyncio.sleep(1)
+                            self.logger.error(f"Error in automatic FB scrape: {e}")
+                else:
+                    # RUTA NORMAL PARA OTROS PORTALES (Firecrawl + AI)
+                    if urls:
+                        self.logger.info(f"Tasking Analyst with {len(urls)} candidates.")
+                        await self.analyst.analyze(urls, limit=max_leads)
 
-        self.logger.info("Mission Completed.")
-
-if __name__ == "__main__":
-    director = DirectorAgent()
-    asyncio.run(director.execute_mission())
+        self.logger.info("Mission Completed Successfully.")

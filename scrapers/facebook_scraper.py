@@ -8,9 +8,11 @@ from scrapers.base_scraper import BaseScraper
 logger = logging.getLogger(__name__)
 
 class FacebookScraper(BaseScraper):
-    def __init__(self, group_id: str):
+    def __init__(self, group_id: str, limit: int = 10):
         self.group_url = f"https://www.facebook.com/groups/{group_id}"
         super().__init__(source_name="Facebook", base_url=self.group_url)
+        self.group_id = group_id
+        self.limit = limit
         self.user = os.getenv("FB_USER")
         self.password = os.getenv("FB_PASSWORD")
         self.session_path = "/app/fb_session.json" # Para guardar el login
@@ -68,6 +70,8 @@ class FacebookScraper(BaseScraper):
             logger.info(f"📊 Analizando {len(posts)} posibles posts...")
             
             for post in posts:
+                if len(self.results) >= self.limit:
+                    break
                 try:
                     content = await post.inner_text()
                     content_lower = content.lower()
