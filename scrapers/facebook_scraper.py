@@ -26,13 +26,14 @@ class FacebookScraper(BaseScraper):
             iphone = p.devices['iPhone 13']
             context = await browser.new_context(**iphone)
             if os.path.exists(self.session_path):
-                await context.add_cookies((await asyncio.to_thread(self._load_session_cookies)))
+                # Omitimos carga de cookies directa por ahora para asegurar login fresco si falla
+                pass
             
             page = await context.new_page()
 
             # 1. Navegación y Login
             await page.goto(self.group_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(4000)
+            await page.wait_for_timeout(5000)
 
             if await page.query_selector('input[name="email"]') or "login" in page.url:
                 logger.info("🔐 Realizando login en versión móvil...")
@@ -45,56 +46,75 @@ class FacebookScraper(BaseScraper):
                 await page.fill('input[name="pass"]', self.password)
                 await page.click('button[name="login"]')
                 await page.wait_for_timeout(10000)
+                
+                # Saltar el "Guardar información de inicio de sesión"
+                try:
+                    not_now = await page.query_selector('text="Ahora no", text="Not Now"')
+                    if not_now: await not_now.click(); await page.wait_for_timeout(3000)
+                except: pass
+                
                 await context.storage_state(path=self.session_path)
 
-            # 2. Bucle de Excavación Dinámica (No paramos hasta que haya material)
+            # 2. Bucle de Excavación Dinámica (Más agresivo)
             logger.info(f"🚜 Iniciando excavación dinámica (Objetivo: {self.limit} leads)...")
             scroll_cycles = 0
-            captured_count = 0
             
-            while captured_count < self.limit and scroll_cycles < 25:
-                await page.evaluate("window.scrollBy(0, 2500)")
-                await page.wait_for_timeout(2000)
-                scroll_cycles += 1
+            for _ in range(20):
+                await page.evaluate("window.scrollBy(0, 3000)")
+                await page.wait_for_timeout(3000) # Más tiempo para cargar
                 
-                # Contar cuántos artículos "pintan bien" (que no sean muy cortos)
-                current_posts = await page.query_selector_all('article, div[role="article"]')
-                captured_count = len(current_posts)
+                # Intentar pulsar "Ver más publicaciones" si aparece
+                try:
+                    more_btn = await page.query_selector('text="Ver más publicaciones", text="Show more posts"')
+                    if more_btn: 
+                        await more_btn.click()
+                        logger.info("➕ Pulsado 'Ver más publicaciones'...")
+                except: pass
+                
+                scroll_cycles += 1
                 if scroll_cycles % 5 == 0:
-                    logger.info(f"   🚜 Ciclo {scroll_cycles}: {captured_count} posts capturados...")
+                    # Selector más amplio para detectar posts móviles
+                    current_items = await page.query_selector_all('div[role="article"], article, div[data-ft]')
+                    logger.info(f"   🚜 Ciclo {scroll_cycles}: {len(current_items)} elementos detectados...")
 
-            # 2.5 Expandir "Ver más" de forma masiva
+            # 2.5 Expandir todo antes de extraer
             logger.info("📄 Expandiendo descripciones finales...")
             see_more_btns = await page.query_selector_all('text="Ver más", text="See more", text="Más", text="Ещё", text="ver mais"')
             for btn in see_more_btns:
                 try: 
-                    if await btn.is_visible(): await btn.click()
+                    if await btn.is_visible(): 
+                        await btn.click()
                 except: continue
+            await page.wait_for_timeout(2000)
 
-            # 3. Captura masiva para el Analista
-            posts = await page.query_selector_all('article, div[role="article"]')
-            logger.info(f"📊 {len(posts)} publicaciones capturadas. Enviando a la IA...")
+            # 3. Captura con selector ultra-agresivo
+            # Buscamos cualquier div que parezca un post por su estructura o contenido
+            items = await page.query_selector_all('div[role="article"], article, div[data-ft]')
+            logger.info(f"📊 {len(items)} posts en bruto encontrados. Procesando...")
             
-            for post in posts:
+            seen_texts = set()
+            for item in items:
                 if len(self.results) >= self.limit: break
                 try:
-                    text = await post.inner_text()
-                    if len(text) < 50: continue
+                    text = await item.inner_text()
+                    if len(text) < 60 or text in seen_texts: continue
+                    seen_texts.add(text)
                     
-                    # URL Real
+                    # URL del post (buscando enlaces que funcionen)
                     post_url = self.group_url
-                    link_el = await post.query_selector('a[href*="story.php"], a[href*="/posts/"], a[href*="/permalink/"]')
-                    if link_el:
-                        href = await link_el.get_attribute('href')
-                        if href:
+                    links = await item.query_selector_all('a')
+                    for l in links:
+                        href = await l.get_attribute('href')
+                        if href and ('story.php' in href or '/posts/' in href or '/permalink/' in href):
                             post_url = f"https://m.facebook.com{href}" if href.startswith('/') else href
+                            break
 
                     # Imagen
-                    img_el = await post.query_selector('img')
+                    img_el = await item.query_selector('img')
                     img_url = await img_el.get_attribute('src') if img_el else "https://images.unsplash.com/photo-1560518883-ce09059eeffa"
                     
                     self.results.append({
-                        "description": text, # Raw text para la IA
+                        "description": text,
                         "url": post_url.split('?')[0],
                         "images": [img_url]
                     })
@@ -102,10 +122,3 @@ class FacebookScraper(BaseScraper):
 
             await browser.close()
             return self.results
-
-    def _load_session_cookies(self):
-        import json
-        try:
-            with open(self.session_path, 'r') as f:
-                return json.load(f).get('cookies', [])
-        except: return []
