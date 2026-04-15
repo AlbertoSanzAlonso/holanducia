@@ -38,7 +38,7 @@ class FacebookScraper(BaseScraper):
             accumulated_text = ""
             
             for scroll_idx in range(25):
-                page.mouse.wheel(0, 800)
+                await page.mouse.wheel(0, 800)
                 await asyncio.sleep(3)
                 
                 # 1. Primero EXPANDIMOS todo lo que haya (Ver más / See more)
