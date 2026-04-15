@@ -32,7 +32,7 @@ class InsForgeConnector:
 
     async def analyze_property(self, property_data: Dict[str, Any], market_avg: float):
         """Calls the edge function to get opportunity analysis"""
-        url = f"{self.oss_host}/functions/v1/analyze-property" 
+        url = "https://s7pytj95.functions.insforge.app/analyze-property"
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(

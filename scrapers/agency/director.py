@@ -51,8 +51,13 @@ class DirectorAgent:
             for portal in portals:
                 self.logger.info(f"Tasking Hunter with {portal} in {city}")
                 
-                if "facebook.com/groups/" in portal:
-                    urls = [portal]
+                urls = []
+                # Si es Facebook, combinamos el portal con la nueva lista de grupos (tags)
+                if portal.lower() == "facebook":
+                    fb_groups = settings.get("facebook_groups") or []
+                    urls = [f"https://www.facebook.com/groups/{g}" for g in fb_groups]
+                    # Soporte para si pusieron una URL entera en portals por error
+                    if "facebook.com/groups/" in portal: urls.append(portal)
                 else:
                     urls = await self.hunter.discover(portal, city)
 
