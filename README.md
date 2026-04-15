@@ -6,7 +6,7 @@ A high-performance system designed to capture, analyze, and notify "Flash Opport
 
 1.  **Server**: Hetzner CX33 (4 vCPU, 8GB RAM).
 2.  **Deployment**: Coolify (Docker Compose Build Pack).
-3.  **Port**: API exposed on port `8080`.
+3.  **Port**: API exposed on port `9000`.
 4.  **Optimization**: Redis deduplication layer active to save Firecrawl credits.
 
 ### Local Development
