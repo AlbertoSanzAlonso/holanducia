@@ -63,8 +63,25 @@ class FacebookScraper(BaseScraper):
             KEYWORDS = ["piso", "casa", "vivienda", "inmueble", "terreno", "parcela", "alquilo", "vendo", "finca", "chalet", "estudio", "loft", "duplex"]
             # Palabras que suelen indicar ruido (no inmobiliario)
             NOISE = ["coche", "moto", "mueble", "sofá", "tv", "empleo", "trabajo", "regalo", "iphone"]
-            # Buscamos los contenedores de los posts
-            posts = await page.query_selector_all('div[role="feed"] > div, div[role="main"] div[data-ad-preview="message"]')
+            
+            # 4. Validar si estamos logueados o nos ha echado
+            if await page.query_selector('form[data-testid="royal_login_form"]') or await page.query_selector('input[name="email"]'):
+                logger.error("❌ ERROR: No estamos logueados en Facebook. La sesión ha caducado o el login falló.")
+                await browser.close()
+                return
+
+            logger.info(f"✅ Dentro del grupo: {self.group_url}")
+            # Esperar a que carguen los posts
+            await page.wait_for_timeout(5000)
+            
+            # Intentar varios selectores por si Facebook cambia
+            posts = await page.query_selector_all('div[role="feed"] > div, div[data-ad-preview="message"], div[data-testid="post_message"]')
+            
+            if not posts:
+                logger.warning("⚠️ No se han encontrado posts con los selectores actuales. Intentando scroll...")
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(3000)
+                posts = await page.query_selector_all('div[role="feed"] > div, div[data-ad-preview="message"], div[data-testid="post_message"]')
 
             logger.info(f"📊 Analizando {len(posts)} posibles posts...")
             
