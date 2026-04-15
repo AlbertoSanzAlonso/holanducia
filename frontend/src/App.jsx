@@ -266,38 +266,38 @@ function App() {
                 ))}
              </div>
 
-             {/* Paginación Nativa Premium */}
+             {/* Paginación Nativa Premium - Ahora Centrada */}
              {filteredProperties.length > itemsPerPage && (
-                <div className="mt-24 border-t border-slate-100 pt-12 flex items-center justify-between">
-                    <div className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
-                        Página {currentPage} de {Math.ceil(filteredProperties.length / itemsPerPage)}
-                    </div>
-                    <div className="flex items-center gap-3">
+                <div className="mt-24 border-t border-slate-100 pt-12 flex flex-col items-center gap-8">
+                    <div className="flex items-center gap-4">
                         <button 
                             disabled={currentPage === 1}
-                            onClick={() => { setCurrentPage(p => p - 1); window.scrollTo({top: 500, behavior: 'smooth'}); }}
-                            className="p-4 bg-white border border-slate-100 rounded-2xl text-slate-900 disabled:opacity-20 hover:shadow-xl transition-all"
+                            onClick={() => { setCurrentPage(p => p - 1); window.scrollTo({top: 400, behavior: 'smooth'}); }}
+                            className="p-4 bg-white border border-slate-100 rounded-3xl text-slate-900 disabled:opacity-20 hover:shadow-2xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200/50"
                         >
                             <ChevronLeft size={24} />
                         </button>
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                             {[...Array(Math.ceil(filteredProperties.length / itemsPerPage))].map((_, i) => (
                                 <button 
                                     key={i}
-                                    onClick={() => { setCurrentPage(i + 1); window.scrollTo({top: 500, behavior: 'smooth'}); }}
-                                    className={`w-12 h-12 rounded-2xl font-black text-xs transition-all ${currentPage === i + 1 ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-50 text-slate-400'}`}
+                                    onClick={() => { setCurrentPage(i + 1); window.scrollTo({top: 400, behavior: 'smooth'}); }}
+                                    className={`w-14 h-14 rounded-2xl font-black text-sm transition-all shadow-xl ${currentPage === i + 1 ? 'bg-slate-900 text-white shadow-slate-400/30' : 'bg-white border border-slate-50 text-slate-400 hover:border-slate-300'}`}
                                 >
                                     {i + 1}
                                 </button>
-                            )).slice(0, 5)} {/* Limitamos a 5 páginas visibles */}
+                            )).slice(Math.max(0, currentPage - 3), Math.min(Math.ceil(filteredProperties.length / itemsPerPage), currentPage + 2))}
                         </div>
                         <button 
                             disabled={currentPage >= Math.ceil(filteredProperties.length / itemsPerPage)}
-                            onClick={() => { setCurrentPage(p => p + 1); window.scrollTo({top: 500, behavior: 'smooth'}); }}
-                            className="p-4 bg-white border border-slate-100 rounded-2xl text-slate-900 disabled:opacity-20 hover:shadow-xl transition-all"
+                            onClick={() => { setCurrentPage(p => p + 1); window.scrollTo({top: 400, behavior: 'smooth'}); }}
+                            className="p-4 bg-white border border-slate-100 rounded-3xl text-slate-900 disabled:opacity-20 hover:shadow-2xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200/50"
                         >
                             <ChevronRight size={24} />
                         </button>
+                    </div>
+                    <div className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] bg-slate-50 px-6 py-2 rounded-full">
+                        Visualizando página {currentPage} de {Math.ceil(filteredProperties.length / itemsPerPage)}
                     </div>
                 </div>
              )}
