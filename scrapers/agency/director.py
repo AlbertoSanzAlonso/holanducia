@@ -14,13 +14,19 @@ class DirectorAgent:
         """Coordinación total de la misión de captación"""
         settings = await self.insforge.get_settings()
         
-        # Parámetros de la misión
-        quota = request.get("target_leads", 10) if request else settings.get("target_leads", 10)
-        fb_groups = request.get("groups", []) if request else settings.get("facebook_groups", [])
+        # Parámetros de la misión con Fallback de seguridad
+        res = request or {}
+        quota = res.get("target_leads") or settings.get("target_leads") or 10
+        fb_groups = res.get("groups") or settings.get("facebook_groups") or settings.get("groups")
         
+        # Si sigue sin haber nada, usamos tus grupos habituales para que no se pare
         if not fb_groups:
-            logger.warning("🚫 No hay grupos de Facebook configurados para la misión.")
-            return
+            fb_groups = ['41757906864', '1018337428507491', '397742921612774']
+            logger.info("ℹ️ Usando grupos por defecto del escuadrón.")
+        
+        # Normalizamos a lista si viene como string
+        if isinstance(fb_groups, str):
+            fb_groups = [g.strip() for g in fb_groups.split(",")]
 
         logger.info(f"🕵️‍♂️ Iniciando Misión de Captación Masiva. Objetivo: {quota} leads nuevos.")
         
