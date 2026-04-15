@@ -241,6 +241,24 @@ const PropertyIntelligenceModal = ({ property: initialProperty, onClose, onUpdat
              )}
           </div>
 
+          {/* Category Selector */}
+          <div className="mb-12">
+             <h4 className="text-slate-900 font-black text-xs uppercase tracking-widest mb-4 flex items-center gap-2">
+               📂 Categoría en Cartera
+             </h4>
+             <div className="flex flex-wrap gap-2">
+                {categories?.map(cat => (
+                    <button 
+                        key={cat.id}
+                        onClick={() => onUpdate({...property, category_id: cat.id})}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border-2 ${property.category_id === cat.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-100 text-slate-400 hover:border-slate-200'}`}
+                    >
+                        {cat.name}
+                    </button>
+                ))}
+             </div>
+          </div>
+
           {/* Actions */}
           <div className="flex flex-col sm:flex-row items-center gap-4 mt-auto pt-6 border-t border-slate-100">
              <a 
