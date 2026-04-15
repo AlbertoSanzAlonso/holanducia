@@ -57,27 +57,42 @@ class FacebookScraper(BaseScraper):
                 await page.mouse.wheel(0, 1000)
                 await page.wait_for_timeout(2000)
 
+            # Palabras clave que definen una oportunidad inmobiliaria
+            KEYWORDS = ["piso", "casa", "vivienda", "inmueble", "terreno", "parcela", "alquilo", "vendo", "finca", "chalet", "estudio", "loft", "duplex"]
+            # Palabras que suelen indicar ruido (no inmobiliario)
+            NOISE = ["coche", "moto", "mueble", "sofá", "tv", "empleo", "trabajo", "regalo", "iphone"]
+
             # Buscamos los contenedores de los posts
-            # Nota: Los selectores de Facebook cambian mucho, esto es una base
             posts = await page.query_selector_all('div[role="feed"] > div, div[role="main"] div[data-ad-preview="message"]')
-            
-            logger.info(f"📊 Encontrados {len(posts)} posibles posts.")
+
+            logger.info(f"📊 Analizando {len(posts)} posibles posts...")
             
             for post in posts:
                 try:
                     content = await post.inner_text()
-                    # Aquí aplicaríamos una limpieza o IA para ver si es de inmobiliaria
-                    if "vendo" in content.lower() or "alquilo" in content.lower() or "precio" in content.lower():
-                        # Generamos una URL falsa o intentamos buscar el link del post
+                    content_lower = content.lower()
+                    
+                    # 1. Filtro rápido de palabras clave
+                    has_keyword = any(kw in content_lower for kw in KEYWORDS)
+                    is_noise = any(ns in content_lower for ns in NOISE)
+                    
+                    if has_keyword and not is_noise:
+                        # 2. Si pasa el filtro, lo procesamos
+                        logger.info(f"✨ ¡Oportunidad detectada!: {content[:60]}...")
+                        
                         self.results.append({
                             "source": "Facebook",
-                            "url": f"{self.group_url}/post_found",
-                            "title": content[:50] + "...",
+                            "url": f"{self.group_url}",
+                            "title": content[:50].replace("\n", " ") + "...",
                             "description": content,
-                            "city": "Desconocida", # Habría que extraerla del texto
-                            "price": 0 # Extraer con regex o IA
+                            "city": "Por determinar", # Habría que extraer con regex o IA
+                            "price": 0, # Extraer con regex
+                            "is_active": True
                         })
-                except:
+                    else:
+                        logger.debug(f"🗑️ Post ignorado (Ruido o no inmobiliario): {content[:40]}...")
+                except Exception as e:
+                    logger.error(f"⚠️ Error al procesar un post de FB: {e}")
                     continue
 
             await browser.close()
