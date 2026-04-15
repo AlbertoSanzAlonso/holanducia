@@ -1,8 +1,9 @@
 import os
 import logging
-from scrapers.insforge_connector import InsForgeConnector
-from scrapers.agency.hunter import HunterAgent
-from scrapers.agency.analyst import AnalystAgent
+import asyncio
+from insforge_connector import InsForgeConnector
+from agency.hunter import HunterAgent
+from agency.analyst import AnalystAgent
 
 class DirectorAgent:
     def __init__(self):

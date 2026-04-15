@@ -1,6 +1,6 @@
 import httpx
-from scrapers.agency.base_agent import BaseAgent
-from scrapers.base_scraper import DEEP_PROPERTY_SCHEMA
+from agency.base_agent import BaseAgent
+from base_scraper import DEEP_PROPERTY_SCHEMA
 from typing import Optional, Dict, Any
 
 class AnalystAgent(BaseAgent):

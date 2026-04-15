@@ -6,8 +6,8 @@ import os
 
 # Ensure shared directory is in path for imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from shared.insforge_connector import InsForgeConnector
-from scrapers.agency.director import DirectorAgent
+from insforge_connector import InsForgeConnector
+from agency.director import DirectorAgent
 
 logging.basicConfig(
     level=logging.INFO, 

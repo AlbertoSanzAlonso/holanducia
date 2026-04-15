@@ -3,7 +3,7 @@ import logging
 import os
 from typing import List, Dict, Any
 from playwright.async_api import async_playwright
-from scrapers.base_scraper import BaseScraper
+from base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
 

@@ -7,9 +7,7 @@ import os
 import sys
 import redis
 
-# Ensure shared directory is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from shared.insforge_connector import InsForgeConnector
+from insforge_connector import InsForgeConnector
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

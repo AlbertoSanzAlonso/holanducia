@@ -1,4 +1,4 @@
-from scrapers.agency.base_agent import BaseAgent
+from agency.base_agent import BaseAgent
 from typing import List
 from playwright.async_api import async_playwright
 import random
