@@ -20,23 +20,8 @@ class DirectorAgent:
         
         # CASO 1: Petición específica con URL
         if request and request.get('url'):
-            url = request['url']
-            if "facebook.com" in url:
-                from scrapers.facebook_scraper import FacebookScraper
-                try:
-                    group_part = url.split("groups/")[1].split("/")[0].split("?")[0]
-                    scraper = FacebookScraper(group_part)
-                    leads = await scraper.scrape()
-                    if leads:
-                        for lead in leads:
-                            cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
-                            if cleaned:
-                                cleaned['url'] = lead['url']
-                                cleaned['images'] = lead['images']
-                                await self.connector.upsert_property(cleaned)
-                except Exception as e:
-                    self.logger.error(f"Error parsing Facebook URL: {e}")
-                return
+            await self._process_single_url(request['url'])
+            return
         
         # CASO 2: Misión General Automática (Settings)
         settings = await self.connector.get_settings()
@@ -45,47 +30,81 @@ class DirectorAgent:
         cities = settings.get("cities") or [""]
         portals_raw = settings.get("portals")
         portals = [p.strip() for p in portals_raw.split(",")] if portals_raw else ["Facebook"]
-        max_leads = settings.get("max_leads_per_portal", 10)
+        quota = settings.get("max_leads_per_portal", 10)
         
         for city in cities:
             for portal in portals:
                 self.logger.info(f"Tasking Hunter with {portal} in {city}")
                 
                 urls = []
-                # Si es Facebook, combinamos el portal con la nueva lista de grupos (tags)
                 if portal.lower() == "facebook":
                     fb_groups = settings.get("facebook_groups") or []
                     urls = [f"https://www.facebook.com/groups/{g}" for g in fb_groups]
-                    # Soporte para si pusieron una URL entera en portals por error
                     if "facebook.com/groups/" in portal: urls.append(portal)
                 else:
                     urls = await self.hunter.discover(portal, city)
 
                 if urls and "facebook.com" in urls[0]:
-                    from scrapers.facebook_scraper import FacebookScraper
-                    for fb_url in urls:
-                        try:
-                            group_part = fb_url.split("groups/")[1].split("/")[0].split("?")[0]
-                            self.logger.info(f"🚀 Infiltrating FB Group: {group_part}")
-                            scraper = FacebookScraper(group_part, limit=50) # Pool grande para elegir
-                            leads = await scraper.scrape()
-                            if leads:
-                                count = 0
-                                for lead in leads:
-                                    if count >= max_leads: break
-                                    cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
-                                    if cleaned:
-                                        cleaned['url'] = lead['url']
-                                        cleaned['images'] = lead['images']
-                                        await self.connector.upsert_property(cleaned)
-                                        count += 1
-                                self.logger.info(f"✅ Mission Success: {count} verified leads saved.")
-                        except Exception as e:
-                            self.logger.error(f"Error in FB group scrape ({fb_url}): {e}")
+                    await self._process_facebook_groups(urls, quota)
                 else:
-                    # OTROS PORTALES
                     if urls:
-                        self.logger.info(f"Tasking Analyst with {len(urls)} candidates.")
-                        await self.analyst.analyze(urls, limit=max_leads)
+                        await self.analyst.analyze(urls, limit=quota)
 
         self.logger.info("Mission Completed Successfully.")
+
+    async def _process_facebook_groups(self, urls, quota):
+        from scrapers.facebook_scraper import FacebookScraper
+        total_saved = 0
+        
+        for fb_url in urls:
+            if total_saved >= quota: break
+            
+            try:
+                group_part = fb_url.split("groups/")[1].split("/")[0].split("?")[0]
+                self.logger.info(f"🚀 Infiltrating FB Group: {group_part} (Need {quota - total_saved} more)")
+                
+                # REINTENTOS: Si no encontramos suficientes, bajamos más
+                attempts = 0
+                while total_saved < quota and attempts < 3:
+                    attempts += 1
+                    # Aumentamos agresividad en cada intento si no hay suficiente
+                    limit_to_fetch = (quota - total_saved) * 15 
+                    scraper = FacebookScraper(group_part, limit=max(limit_to_fetch, 50))
+                    
+                    leads = await scraper.scrape()
+                    if not leads: break
+                    
+                    batch_saved = 0
+                    for lead in leads:
+                        if total_saved >= quota: break
+                        
+                        cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
+                        if cleaned:
+                            cleaned['url'] = lead['url']
+                            cleaned['images'] = lead['images']
+                            await self.connector.upsert_property(cleaned)
+                            total_saved += 1
+                            batch_saved += 1
+                    
+                    self.logger.info(f"   📊 Attempt {attempts}: {batch_saved} real estate leads verified.")
+                    if batch_saved == 0: break # Si en una tanda no hay nada inmobiliario, probablemente no haya más
+                    
+            except Exception as e:
+                self.logger.error(f"Error in FB group scrape ({fb_url}): {e}")
+
+    async def _process_single_url(self, url):
+        if "facebook.com" in url:
+            from scrapers.facebook_scraper import FacebookScraper
+            try:
+                group_part = url.split("groups/")[1].split("/")[0].split("?")[0]
+                scraper = FacebookScraper(group_part, limit=30)
+                leads = await scraper.scrape()
+                if leads:
+                    for lead in leads:
+                        cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
+                        if cleaned:
+                            cleaned['url'] = lead['url']
+                            cleaned['images'] = lead['images']
+                            await self.connector.upsert_property(cleaned)
+            except Exception as e:
+                self.logger.error(f"Error parsing Facebook URL: {e}")
