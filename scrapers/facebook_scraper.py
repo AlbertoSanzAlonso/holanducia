@@ -96,7 +96,8 @@ class FacebookScraper(BaseScraper):
                     content_lower = content.lower()
                     
                     # Log de lo que estamos viendo (primeros 50 caracteres)
-                    logger.info(f"  [Post {i+1}] Visto: {content_lower[:50].replace('\n', ' ')}...")
+                    preview = content_lower[:50].replace('\n', ' ')
+                    logger.info(f"  [Post {i+1}] Visto: {preview}...")
                     
                     is_real_estate = any(kw in content_lower for kw in ['piso', 'casa', 'alquiler', 'vendo', 'habitacion', 'estudio', 'chalet', 'inmueble'])
                     is_noise = any(kw in content_lower for kw in ['mueble', 'sofá', 'mesa', 'coche', 'busco', 'necesito'])
