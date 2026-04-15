@@ -8,7 +8,10 @@ from agency.analyst import AnalystAgent
 class DirectorAgent:
     def __init__(self):
         self.logger = logging.getLogger("Agency.Director")
-        self.connector = InsForgeConnector()
+        self.connector = InsForgeConnector(
+            oss_host=os.getenv("INSFORGE_URL"),
+            api_key=os.getenv("INSFORGE_ANON_KEY")
+        )
         self.hunter = HunterAgent()
         self.analyst = AnalystAgent()
 
