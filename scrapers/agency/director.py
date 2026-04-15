@@ -37,10 +37,10 @@ class DirectorAgent:
         
         # 1. Ejecución Secuencial para máxima estabilidad
         scraper = FacebookScraper(fb_groups[0], limit=quota)
-        results = await scraper.scrape_multiple(fb_groups)
+        results_count = await scraper.scrape_multiple(fb_groups)
         
-        logger.info(f"📊 Misión terminada. Procesando {len(results)} candidatos potenciales...")
+        logger.info(f"📊 Misión terminada. Se han procesado e inyectado {results_count} leads.")
         
-        # El rascador ya se encarga de inyectar, aquí solo hacemos resumen final
+        # El rascador ya se encarga de inyectar
         logger.info(f"🏁 Director: Misión cerrada.")
-        return results
+        return results_count

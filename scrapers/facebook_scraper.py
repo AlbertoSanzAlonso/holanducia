@@ -91,7 +91,16 @@ class FacebookScraper(BaseScraper):
                     except: pass
                     
                     full_text = await page.evaluate("document.body.innerText")
-                    markers = ["Compartir", "Comentar", "Me gusta", "Hace 1 día", "Hace 2 días"]
+                    # Marcadores bilingües para máxima estabilidad
+                    markers = [
+                        "Compartir", "Share", 
+                        "Comentar", "Comment", 
+                        "Me gusta", "Like", 
+                        "Hace 1 día", "1d", 
+                        "Hace 2 días", "2d",
+                        "Yesterday", "Ayer",
+                        "Just now", "Ahora mismo"
+                    ]
                     pattern = "|".join(re.escape(m) for m in markers)
                     fragments = re.split(pattern, full_text)
                     
