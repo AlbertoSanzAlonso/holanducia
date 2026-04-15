@@ -38,37 +38,39 @@ class FacebookScraper(BaseScraper):
             )
             page = await context.new_page()
             
-            # 1. INTENTO DE LOGIN SI HAY CREDENCIALES
-            if self.user and self.password:
-                # Retraso aleatorio para no atropellarse en el login (Squadron Jitter)
-                import random
-                await asyncio.sleep(random.uniform(1, 5))
-                
-                logger.info(f"🔑 Intentando login como: {self.user}...")
-                try:
-                    await page.goto("https://m.facebook.com/login", wait_until="networkidle", timeout=60000)
-                    
-                    # Aceptar cookies (varios nombres posibles)
-                    for text in ["Rechazar", "Solo esenciales", "Decline"]:
-                        try:
-                            btn = page.get_by_role("button").filter(has_text=text)
-                            if await btn.is_visible(): await btn.click()
-                        except: pass
-                    
-                    await page.fill('input[name="email"]', self.user)
-                    await page.fill('input[name="pass"]', self.password)
-                    
-                    # Intentar click en varios selectores de botón de login
-                    login_btn = page.locator('button[name="login"], button[type="submit"], [data-sigil="m_login_button"]')
-                    await login_btn.first.click(timeout=10000)
-                    
-                    await page.wait_for_timeout(5000)
-                except Exception as e:
-                    logger.warning(f"⚠️ Dificultades en el login: {str(e)[:100]}. Intentando continuar...")
-
-            # 2. Navegación al grupo
-            await page.goto(self.group_url, wait_until="domcontentloaded")
+            # 1. Navegación directa al Grupo (A veces Facebook permite ver si hay cookies previas)
+            logger.info(f"🚀 Navegando a: {self.group_url}")
+            await page.goto(self.group_url, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(3000)
+
+            # 2. DETECCIÓN Y GESTIÓN DE LOGIN / COOKIES
+            # Si vemos campos de login o muros de cookies, actuamos
+            if self.user and self.password:
+                try:
+                    # Limpieza de Cookies (Cualquier botón que parezca aceptar/rechazar)
+                    cookie_btns = await page.locator('button:has-text("Aceptar"), button:has-text("Rechazar"), button:has-text("cookies")').all()
+                    for b in cookie_btns:
+                        if await b.is_visible(): await b.click()
+                    
+                    # ¿Estamos en una pantalla de login?
+                    if await page.locator('input[name="email"]').is_visible():
+                        logger.info(f"🔑 Muro de Login detectado. Identificando a {self.user}...")
+                        await page.fill('input[name="email"]', self.user)
+                        await page.fill('input[name="pass"]', self.password)
+                        
+                        # Click en el botón de login (con reintentos y selectores amplios)
+                        login_selectors = ['button[name="login"]', 'button[type="submit"]', '[role="button"]:has-text("Entrar")', '[role="button"]:has-text("Log In")']
+                        for sel in login_selectors:
+                            try:
+                                btn = page.locator(sel)
+                                if await btn.is_visible():
+                                    await btn.click(timeout=5000)
+                                    break
+                            except: continue
+                        
+                        await page.wait_for_timeout(5000)
+                except Exception as e:
+                    logger.warning(f"⚠️ Aviso en fase de acceso: {str(e)[:100]}")
 
             # 3. Excavación con ACUMULACIÓN GRANULAR
             logger.info("🚜 Aspirando contenido (Objetivo: 100 publicaciones brutas)...")
