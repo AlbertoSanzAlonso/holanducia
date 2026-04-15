@@ -1,80 +1,82 @@
 import httpx
 import logging
+import json
 import hashlib
-import re
 import os
 from agency.base_agent import BaseAgent
 from typing import Optional, Dict, Any
 
+logger = logging.getLogger(__name__)
+
 class AnalystAgent(BaseAgent):
     def __init__(self):
         super().__init__("Analyst")
-        self.api_url = os.getenv("INSFORGE_URL")
-        self.api_key = os.getenv("INSFORGE_ANON_KEY")
-        # El endpoint de las funciones suele ser diferente al de la DB
-        self.functions_url = self.api_url.replace(".eu-central", ".functions") if self.api_url else ""
+        # Usamos variable de entorno para máxima seguridad (Evitamos bloqueos de GitHub)
+        self.openai_key = os.environ.get("OPENAI_API_KEY")
+        self.openai_url = "https://api.openai.com/v1/chat/completions"
 
     async def parse_raw_text(self, raw_content: str, source: str = "Facebook") -> Optional[Dict[str, Any]]:
-        """Uses LLM-powered Edge Function to parse noisy content"""
-        self.logger.info(f"🧠 AI Parsing noisy {source} content via LLM...")
+        """Extrae datos inmobiliarios estructurados usando OpenAI GPT-4o-mini"""
+        self.logger.info("🧠 AI Analysis via OpenAI (Squadron Intel Active)...")
         
+        headers = {
+            "Authorization": f"Bearer {self.openai_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "system", 
+                    "content": "Eres un analista experto en el mercado inmobiliario. Tu misión es extraer datos de posts de Facebook. SI EL POST NO ES UNA OFERTA DE VIVIENDA (ej. servicios de limpieza, quejas, publicidad), RESPONDE EXACTAMENTE 'NULL'. Si es una oferta, devuelve un JSON con: title, price (solo número), city, rooms, is_individual (boolean), description (resumen limpio)."
+                },
+                {"role": "user", "content": f"Post text: {raw_content}"}
+            ],
+            "response_format": {"type": "json_object"}
+        }
+
         try:
-            # Mandamos el contenido bruto a la función de análisis de IA de InsForge
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.functions_url}/analyze-property",
-                    json={
-                        "raw_text": raw_content,
-                        "url": f"https://facebook.com/groups/radar?id={hashlib.md5(raw_content.encode()).hexdigest()[:8]}"
-                    },
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
-                    }
-                )
+                response = await client.post(self.openai_url, json=payload, headers=headers)
                 
-                if response.status_code == 200:
-                    ai_data = response.json()
-                    
-                    # Si la IA dice que es una oportunidad baja o no es inmobiliario, descartamos
-                    if ai_data.get('opportunity_score', 0) < 30 or not ai_data.get('title'):
-                        self.logger.warning("🚫 Post descartado: No parece contenido inmobiliario de interés.")
-                        return None
-                    
-                    # Enriquecemos con los campos necesarios para la DB
-                    content_hash = hashlib.md5(raw_content.encode()).hexdigest()[:10]
-                    ai_data["external_id"] = f"{source[:2].upper()}-{content_hash}"
-                    ai_data["source"] = source
-                    ai_data["description"] = raw_content # Guardamos el original por si acaso
-                    
-                    self.logger.info(f"✅ AI Verified Lead: {ai_data['title']} ({ai_data['price']}€)")
-                    return ai_data
-                else:
-                    self.logger.error(f"IA Function Error ({response.status_code}): {response.text}")
-                    # Si la IA falla, usamos un fallback básico de emergencia
+                if response.status_code != 200:
+                    self.logger.error(f"OpenAI Error: {response.text}")
                     return await self._fallback_parse(raw_content, source)
+                
+                result = response.json()
+                content = result['choices'][0]['message']['content']
+                
+                if "NULL" in content:
+                    self.logger.warning("🚫 Post discarded: Non-real estate content detected by AI.")
+                    return None
+                
+                data = json.loads(content)
+                
+                # Enriquecimiento y normalización
+                content_hash = hashlib.md5(raw_content.encode()).hexdigest()[:10]
+                data["external_id"] = f"{source[:2].upper()}-{content_hash}"
+                data["url"] = f"https://facebook.com/groups/post_{content_hash}"
+                data["source"] = source
+                
+                self.logger.info(f"✨ AI Verified Lead: {data.get('title')} ({data.get('price')}€)")
+                return data
 
         except Exception as e:
-            self.logger.error(f"AI Analysis failed: {e}")
-            return None
+            self.logger.error(f"AI Extraction failed: {e}")
+            return await self._fallback_parse(raw_content, source)
 
     async def _fallback_parse(self, content: str, source: str) -> Optional[Dict[str, Any]]:
-        """Emergency regex parsing if LLM fails - STRICT MODE"""
+        """Emergency parsing if OpenAI is down"""
         content_lower = content.lower()
-        
-        # Filtro Anti-Ruido de grupo (Pintores, Alarmas, Quejas...)
-        black_list = ['pintura', 'pintor', 'alarma', 'policía', 'patinetes', 'coches', 'perro', 'perdido']
-        if any(bad in content_lower for bad in black_list):
-            return None
-
-        if not any(kw in content_lower for kw in ['piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'estudio', 'ref.']):
+        if not any(kw in content_lower for kw in ['piso', 'casa', 'vivienda', 'alquiler', 'vendo']):
             return None
             
         content_hash = hashlib.md5(content.encode()).hexdigest()[:10]
         return {
             "external_id": f"{source[:2].upper()}-{content_hash}",
-            "title": "Oportunidad detectada (Filtro Manual)",
-            "description": content[:500], # Limitamos para no llenar la DB de basura
+            "title": "Oportunidad detectada (AI Off)",
+            "description": content[:300],
             "price": 0,
             "city": "Málaga",
             "source": source
