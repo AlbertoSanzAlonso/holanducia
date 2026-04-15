@@ -83,52 +83,53 @@ class FacebookScraper(BaseScraper):
                 # Proceso de rascado del grupo
                 unique_posts = set()
                 for scroll in range(30):
-                    # Expandir anuncios (Crucial para no recibir "None" o info cortada)
+                    # 1. Comprobar que la página sigue viva
+                    if page.is_closed(): break
+                    
+                    # 2. Expandir anuncios (Ver más)
                     try:
                         expand_btns = await page.get_by_text(re.compile(r"Ver más|See more", re.IGNORECASE)).all()
-                        for b in expand_btns[:10]:
-                            if await b.is_visible(): 
-                                await b.click(timeout=1000)
-                                await page.wait_for_timeout(300)
+                        for b in expand_btns[:5]:
+                            if await b.is_visible(): await b.click(timeout=500)
                     except: pass
                     
-                    full_text = await page.evaluate("document.body.innerText")
+                    # 3. EXTRACCIÓN POR BLOQUES (Mucho más estable que re.split)
+                    # Buscamos divs que contienen palabras clave de interacción
+                    new_fragments = await page.evaluate("""() => {
+                        const posts = [];
+                        // Buscamos contenedores que parezcan anuncios
+                        const elements = document.querySelectorAll('article, div[data-sigil="m-feed-voice-internal"], div._5r-k');
+                        elements.forEach(el => posts.push(el.innerText));
+                        
+                        // Si no encuentra nada por selector, intentamos por densidad de texto
+                        if (posts.length === 0) {
+                            return document.body ? document.body.innerText.split(/Compartir|Share|Comment|Comentar/) : [];
+                        }
+                        return posts;
+                    }""")
                     
-                    # Marcadores de "Corte" para separar un post de otro
-                    markers = [
-                        "Compartir", "Share", 
-                        "Comentar", "Comment", 
-                        "Me gusta", "Like",
-                        "Just now", "Ahora mismo",
-                        "1 min", "1 h", "1 d", "Yesterday", "Ayer"
-                    ]
-                    pattern = "|".join(re.escape(m) for m in markers)
-                    fragments = re.split(pattern, full_text)
+                    for frag in new_fragments:
+                        clean = frag.strip()
+                        if len(clean) > 60: 
+                            unique_posts.add(clean)
                     
-                    for frag in fragments:
-                        clean_frag = frag.strip()
-                        # Si tiene chicha (más de 60 chars) y no es solo ruido de interfaz
-                        if len(clean_frag) > 60:
-                            unique_posts.add(clean_frag)
+                    if scroll % 5 == 0:
+                        logger.info(f"🚜 Escaneo {scroll}: {len(unique_posts)} fragmentos únicos acumulados...")
                     
                     await page.mouse.wheel(0, 1500)
                     await page.wait_for_timeout(1500)
 
                 # Mandamos los fragmentos a analizar con ESCUDO DE AHORRO
-                logger.info(f"📑 Analizando {len(unique_posts)} candidatos con Escudo de Ahorro activo...")
-                estate_keywords = [
+                valid_candidates = [p for p in unique_posts if any(k in p.lower() for k in [
                     'piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'venta', 'chalet', 'inmueble', 
                     'hab', 'dorm', 'baño', 'estudio', 'loft', 'duplex', 'finca', 'apartamento', 
                     '€', 'euro', 'precio', 'm2', 'particular', 'inmobiliaria', 'comunidad'
-                ]
+                ])]
                 
-                for post_text in unique_posts:
+                logger.info(f"📑 Analizando {len(valid_candidates)} de {len(unique_posts)} candidatos con Escudo de Ahorro...")
+                
+                for post_text in valid_candidates:
                     if total_leads >= self.limit: break
-                    
-                    # FILTRO LOCAL (Coste 0 tokens)
-                    text_lower = post_text.lower()
-                    if not any(k in text_lower for k in estate_keywords):
-                        continue # Descartado localmente por no parecer inmobiliario
                     
                     # Usamos "Facebook" como nombre de fuente limpio
                     ai_data = await self.analyst.parse_raw_text(post_text, "Facebook")
@@ -142,7 +143,6 @@ class FacebookScraper(BaseScraper):
                         ai_data["url"] = f"{group_url}?post_id={f_hash}"
                         success = await self.connector.upsert_property(ai_data)
                         
-                        # ¡IMPORTANTE! Aseguramos el conteo
                         total_leads += 1
                         await self.mark_as_scraped(f_hash)
                         logger.info(f"✨ [{total_leads}/{self.limit}] Lead guardado: {ai_data['title']}")
