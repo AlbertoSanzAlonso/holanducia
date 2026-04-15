@@ -45,29 +45,32 @@ class FacebookScraper(BaseScraper):
             unique_posts = set()
             
             for scroll_idx in range(25):
-                # Expandimos los "Ver más" para capturar el post entero
+                # Expandimos los "Ver más"
                 try:
                     view_more = await page.get_by_text("Ver más").all()
                     for b in view_more:
                         if await b.is_visible(): await b.click()
                 except: pass
                 
-                # Buscamos artículos individuales
-                posts_locators = await page.locator('article, [role="article"]').all()
-                for post in posts_locators:
-                    try:
-                        text = await post.inner_text()
-                        # Limpieza básica de ruido
-                        clean_text = re.sub(r'Compartir|Comentar|Me gusta|Seguir|Joined|Public group.*', '', text)
-                        if len(clean_text) > 100: # Un anuncio de piso suele ser largo
-                            unique_posts.add(clean_text.strip())
-                    except: continue
+                # CAPTURA TODOTERRENO: Capturamos todo el texto y lo troceamos por marcadores de post
+                full_text = await page.evaluate("document.body.innerText")
+                
+                # Facebook Móvil separa los posts con "Me gusta", "Compartir", "Comentar"
+                # Usamos estos marcadores para trocear el chorro de texto
+                markers = ["Compartir", "Comentar", "Me gusta", "Hace 1 día", "Hace 2 días"]
+                pattern = "|".join(re.escape(m) for m in markers)
+                raw_fragments = re.split(pattern, full_text)
+                
+                for frag in raw_fragments:
+                    clean_frag = frag.strip()
+                    if len(clean_frag) > 100: # Un anuncio real tiene cuerpo
+                        unique_posts.add(clean_frag)
                 
                 await page.mouse.wheel(0, 1000)
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(1000)
                 
                 if scroll_idx % 5 == 0:
-                    logger.info(f"   🚜 Escaneo {scroll_idx}: {len(unique_posts)} fragmentos únicos acumulados...")
+                    logger.info(f"   🚜 Escaneo {scroll_idx}: {len(unique_posts)} fragmentos únicos detectados...")
 
             logger.info(f"📑 Analizando {len(unique_posts)} candidatos con OpenAI...")
             
