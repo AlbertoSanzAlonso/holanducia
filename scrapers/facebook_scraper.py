@@ -75,17 +75,26 @@ class FacebookScraper(BaseScraper):
                 clean_frag = frag.strip()
                 if len(clean_frag) < 50: continue
                 
-                f_hash = self._generate_stable_hash(clean_frag)
+                # 1. Analizamos PRIMERO para tener datos limpios (Título, Precio, etc.)
+                ai_data = await self.analyst.parse_raw_text(clean_frag, source="Facebook")
+                if not ai_data: continue
                 
-                if f_hash in seen_hashes: continue
-                seen_hashes.add(f_hash)
+                # 2. Generamos el DNI basado en el TÍTULO + PRECIO + CIUDAD (lo que el usuario pidió)
+                # Esto es lo más estable del mundo
+                identity_string = f"{ai_data.get('title', '')}{ai_data.get('price', 0)}{ai_data.get('city', '')}".lower()
+                identity_string = re.sub(r'[^a-z0-9]', '', identity_string) # Limpieza total
+                f_hash = hashlib.md5(identity_string.encode()).hexdigest()
+                
+                unique_url = f"{self.group_url}?post_id={f_hash[:16]}"
+                
+                # 3. Ahora sí, comprobamos si este "Piso + Precio" ya existe
+                if await self.deduplicator.is_duplicate(unique_url):
+                    logger.info(f"⏭️  Omitiendo duplicado semántico: {ai_data['title']}")
+                    continue
 
-                if any(kw in clean_frag.lower() for kw in keywords):
-                    self.results.append({
-                        "description": clean_frag,
-                        "url": f"{self.group_url}?post_id={f_hash[:8]}",
-                        "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa"]
-                    })
+                ai_data["url"] = unique_url
+                self.results.append(ai_data)
+                logger.info(f"✨ Nuevo Lead: {ai_data['title']} en {ai_data['city']}")
 
             await browser.close()
             logger.info(f"✅ Extracción finalizada: {len(self.results)} candidatos reales encontrados.")
