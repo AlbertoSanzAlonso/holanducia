@@ -41,10 +41,43 @@ class FacebookScraper(BaseScraper):
                     return
                 
                 logger.info("🔐 Realizando login en Facebook...")
+                
+                # Aceptar cookies si aparecen
+                cookie_selectors = [
+                    'button[data-cookiebanner="accept_button"]',
+                    'button[title="Permitir todas las cookies"]',
+                    'button:has-text("Aceptar todas")',
+                    'div[aria-label="Aceptar todas"]'
+                ]
+                for selector in cookie_selectors:
+                    try:
+                        btn = await page.query_selector(selector)
+                        if btn:
+                            await btn.click()
+                            logger.info("🍪 Cookies aceptadas.")
+                            await page.wait_for_timeout(2000)
+                            break
+                    except: continue
+
                 await page.fill('input[name="email"]', self.user)
                 await page.fill('input[name="pass"]', self.password)
-                await page.click('button[name="login"]')
-                await page.wait_for_timeout(5000) # Esperamos que entre
+                
+                # Intentar varios botones de login
+                login_btn_selectors = ['button[name="login"]', 'button[type="submit"]', '[data-testid="royal_login_button"]']
+                logged_in = False
+                for selector in login_btn_selectors:
+                    try:
+                        btn = await page.query_selector(selector)
+                        if btn:
+                            await btn.click()
+                            logged_in = True
+                            break
+                    except: continue
+                
+                if not logged_in:
+                    await page.keyboard.press("Enter") # Último recurso
+                
+                await page.wait_for_timeout(8000) # Más tiempo para entrar
                 
                 # Guardamos la sesión para la próxima vez
                 await context.storage_state(path=self.session_path)
