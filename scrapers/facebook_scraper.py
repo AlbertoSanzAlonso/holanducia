@@ -47,13 +47,24 @@ class FacebookScraper(BaseScraper):
                 await page.wait_for_timeout(10000)
                 await context.storage_state(path=self.session_path)
 
-            # 2. Scrolleo profundo (Buscamos cantidad para que la IA elija calidad)
-            logger.info("🚜 Excavando el grupo en busca de anuncios...")
-            for _ in range(15):
-                await page.evaluate("window.scrollBy(0, 2000)")
-                await page.wait_for_timeout(1500)
+            # 2. Bucle de Excavación Dinámica (No paramos hasta que haya material)
+            logger.info(f"🚜 Iniciando excavación dinámica (Objetivo: {self.limit} leads)...")
+            scroll_cycles = 0
+            captured_count = 0
+            
+            while captured_count < self.limit and scroll_cycles < 25:
+                await page.evaluate("window.scrollBy(0, 2500)")
+                await page.wait_for_timeout(2000)
+                scroll_cycles += 1
+                
+                # Contar cuántos artículos "pintan bien" (que no sean muy cortos)
+                current_posts = await page.query_selector_all('article, div[role="article"]')
+                captured_count = len(current_posts)
+                if scroll_cycles % 5 == 0:
+                    logger.info(f"   🚜 Ciclo {scroll_cycles}: {captured_count} posts capturados...")
 
-            # 2.5 Expandir "Ver más" de forma agresiva
+            # 2.5 Expandir "Ver más" de forma masiva
+            logger.info("📄 Expandiendo descripciones finales...")
             see_more_btns = await page.query_selector_all('text="Ver más", text="See more", text="Más", text="Ещё", text="ver mais"')
             for btn in see_more_btns:
                 try: 
