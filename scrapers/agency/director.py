@@ -9,8 +9,24 @@ class DirectorAgent(BaseAgent):
         self.hunter = HunterAgent()
         self.analyst = AnalystAgent()
 
-    async def execute_mission(self):
-        self.logger.info("Starting Mission: Massive Market Infiltration")
+    async def execute_mission(self, request=None):
+        self.logger.info("Starting Mission: AI Intelligence Infiltration")
+        
+        # Si tenemos una petición específica con URL (ej: Facebook)
+        if request and request.get('url'):
+            url = request['url']
+            self.logger.info(f"🎯 Target Acquired: {url}")
+            
+            if "facebook.com" in url:
+                from scrapers.facebook_scraper import FacebookScraper
+                # Extraer Group ID
+                try:
+                    group_id = url.split("groups/")[1].split("/")[0]
+                    scraper = FacebookScraper(group_id)
+                    await scraper.scrape()
+                except Exception as e:
+                    self.logger.error(f"Error parsing Facebook URL: {e}")
+                return # Misión específica terminada
         
         settings = await self.connector.get_settings()
         if not settings:

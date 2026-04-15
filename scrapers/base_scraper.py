@@ -71,15 +71,22 @@ class BaseScraper(ABC):
         if not self.redis:
             return False
         
-        # We use a Set in Redis for global uniqueness
-        return self.redis.sismember("holanducia:processed_urls", url)
+        try:
+            # We use a Set in Redis for global uniqueness
+            return self.redis.sismember("holanducia:processed_urls", url)
+        except Exception as e:
+            logger.warning(f"Could not check Redis for duplicates: {e}")
+            return False
 
     async def mark_as_scraped(self, url: str):
         """Marks URL as processed to avoid re-scraping and wasting Firecrawl credits"""
-        if self.redis:
+        if not self.redis:
+            return
+            
+        try:
             self.redis.sadd("holanducia:processed_urls", url)
-            # Optional: Set expiration for the whole set isn't easy, 
-            # but we can track daily sets if needed.
+        except Exception as e:
+            logger.warning(f"Could not save URL to Redis: {e}")
 
     async def scrape_with_firecrawl(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         # Check before spending credits!

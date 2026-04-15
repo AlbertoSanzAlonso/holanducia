@@ -52,9 +52,8 @@ async def main():
                         update_url = f"{oss_host}/api/database/records/scraping_requests?id=eq.{request_id}"
                         await client.patch(update_url, json={"status": "processing"}, headers=headers)
                         
-                        # Ejecutamos la lógica de rascado masivo
-                        # Pasar el request_id si el director lo necesita para contexto
-                        await director.execute_mission()
+                        # Ejecutamos la lógica de rascado (si hay URL, es una tarea específica)
+                        await director.execute_mission(request=request)
                         
                         # Marcamos como completada
                         await client.patch(update_url, json={
