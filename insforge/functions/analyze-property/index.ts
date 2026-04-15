@@ -1,84 +1,57 @@
-export interface Property {
-  id?: number;
-  external_id: string;
-  source: string;
-  url: string;
-  title?: string;
-  price: number;
-  currency: string;
-  location_raw?: string;
-  city?: string;
-  neighborhood?: string;
-  address?: string;
-  coordinates?: { x: number, y: number };
-  catastro_ref?: string;
-  rooms?: number;
-  bathrooms?: number;
-  size_m2?: number;
-  description?: string;
-  images: string[];
-  is_individual: boolean;
-  is_agency: boolean;
-  last_seen: string; // ISO Date
-  created_at?: string; // ISO Date
-  updated_at?: string; // ISO Date
-  price_history: PriceHistoryItem[];
-  opportunity_score: number;
-}
+import { createClient } from 'https://esm.sh/@insforge/sdk@1.2.4'
 
-export interface PriceHistoryItem {
-  price: number;
-  date: string;
-}
+const insforge = createClient({
+  baseUrl: Deno.env.get('INSFORGE_URL')!,
+  anonKey: Deno.env.get('INSFORGE_ANON_KEY')!
+})
 
-export interface AnalysisResult {
-  score: number;
-  reasons: string[];
-  is_hot: boolean;
-}
-
-export default async (req: Request) => {
+export default async function(req: Request) {
   try {
-    const { property, market_avg }: { property: Property, market_avg: number } = await req.json()
+    const body = await req.json()
     
+    // CASO A: Extracción desde texto bruto (Lo que viene de Facebook)
+    if (body.raw_text) {
+      console.log("🧠 Extrayendo datos semánticos con IA...")
+      
+      const { data, error } = await insforge.ai.extract(body.raw_text, {
+        schema: {
+          title: "string (Atractivo y breve)",
+          price: "number (Solo el número)",
+          city: "string (Ej: Benalmádena, Torremolinos, Málaga)",
+          rooms: "number",
+          size_m2: "number",
+          is_individual: "boolean (true si es particular)",
+          opportunity_score: "number (0-100, basado en si parece barato o buena inversión)"
+        }
+      })
+
+      if (error) throw error
+      return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } })
+    }
+
+    // CASO B: Análisis de puntuación (Lo que ya existía)
+    const { property, market_avg } = body
+    if (!property) throw new Error("Faltan datos de la propiedad para el análisis")
+
     let score = 0
     const reasons: string[] = []
 
-    // 1. Price Drop (if history provided)
-    if (property.price_history && property.price_history.length > 0) {
-      const last_price = property.price_history[property.price_history.length - 1].price
-      if (property.price < last_price) {
-        const discount = ((last_price - property.price) / last_price) * 100
-        if (discount >= 5) {
-          score += Math.min(40, discount * 2)
-          reasons.push(`Bajada de precio: ${discount.toFixed(1)}%`)
-        }
-      }
+    if (property.price < (market_avg || 300000)) {
+        score += 30
+        reasons.push("Precio competitivo")
     }
-
-    // 2. Under Market Average
-    if (property.price < market_avg) {
-      const infra_value = ((market_avg - property.price) / market_avg) * 100
-      if (infra_value >= 10) {
-        score += Math.min(40, infra_value * 1.5)
-        reasons.push(`${infra_value.toFixed(1)}% por debajo de la media de zona`)
-      }
-    }
-
-    // 3. Individual Owner
+    
     if (property.is_individual) {
-      score += 20
-      reasons.push("Vendedor particular (Oportunidad de captación)")
+        score += 20
+        reasons.push("Particular")
     }
 
-    return new Response(
-      JSON.stringify({ 
-        score: Math.min(100, score), 
-        reasons,
-        is_hot: score >= 80 
-      }),
-      { headers: { "Content-Type": "application/json" } }
-    )
+    return new Response(JSON.stringify({ 
+      score: Math.min(100, score), 
+      reasons,
+      opportunity_score: score // Alias para compatibilidad
+    }), { headers: { "Content-Type": "application/json" } })
+
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { 
       status: 400,

@@ -1,110 +1,81 @@
-import os
-import logging
 import asyncio
-from insforge_connector import InsForgeConnector
-from agency.hunter import HunterAgent
-from agency.analyst import AnalystAgent
+import logging
+import os
+from typing import List, Dict, Any
+from scrapers.facebook_scraper import FacebookScraper
+from scrapers.insforge_connector import InsForgeConnector
+
+logger = logging.getLogger(__name__)
 
 class DirectorAgent:
     def __init__(self):
-        self.logger = logging.getLogger("Agency.Director")
-        self.connector = InsForgeConnector(
-            oss_host=os.getenv("INSFORGE_URL"),
-            api_key=os.getenv("INSFORGE_ANON_KEY")
-        )
-        self.hunter = HunterAgent()
-        self.analyst = AnalystAgent()
-
-    async def execute_mission(self, request=None):
-        self.logger.info("Starting Mission: AI Intelligence Infiltration")
+        self.insforge = InsForgeConnector()
+        self.max_parallel_groups = 3 # Límite para no saturar la RAM
         
-        # CASO 1: Petición específica con URL
-        if request and request.get('url'):
-            await self._process_single_url(request['url'])
+    async def execute_mission(self, quota: int = 10):
+        """Coordina múltiples agentes para alcanzar la cuota de leads requerida"""
+        logger.info(f"🕵️‍♂️ Iniciando Misión de Captación Masiva. Objetivo: {quota} leads nuevos.")
+        
+        # 1. Obtenemos configuración (Grupos de Facebook autorizados)
+        settings = await self.insforge.get_user_settings()
+        fb_groups = settings.get("facebook_groups", [])
+        
+        if not fb_groups:
+            logger.warning("⚠️ No hay grupos de Facebook configurados. Misión abortada.")
             return
+
+        total_verified_leads = 0
+        all_results = []
         
-        # CASO 2: Misión General Automática (Settings)
-        settings = await self.connector.get_settings()
-        if not settings: return
-
-        cities = settings.get("cities") or [""]
-        portals_raw = settings.get("portals")
-        portals = [p.strip() for p in portals_raw.split(",")] if portals_raw else ["Facebook"]
-        quota = settings.get("max_leads_per_portal", 10)
-        
-        for city in cities:
-            for portal in portals:
-                self.logger.info(f"Tasking Hunter with {portal} in {city}")
-                
-                urls = []
-                if portal.lower() == "facebook":
-                    fb_groups = settings.get("facebook_groups") or []
-                    urls = [f"https://www.facebook.com/groups/{g}" for g in fb_groups]
-                    if "facebook.com/groups/" in portal: urls.append(portal)
-                else:
-                    urls = await self.hunter.discover(portal, city)
-
-                if urls and "facebook.com" in urls[0]:
-                    await self._process_facebook_groups(urls, quota)
-                else:
-                    if urls:
-                        await self.analyst.analyze(urls, limit=quota)
-
-        self.logger.info("Mission Completed Successfully.")
-
-    async def _process_facebook_groups(self, urls, quota):
-        from scrapers.facebook_scraper import FacebookScraper
-        total_saved = 0
-        
-        for fb_url in urls:
-            if total_saved >= quota: break
+        # 2. Bucle de Persistencia: Vamos lanzando grupos en paralelo hasta llenar la cuota
+        # Procesamos en 'chunks' de max_parallel_groups
+        for i in range(0, len(fb_groups), self.max_parallel_groups):
+            if total_verified_leads >= quota: break
             
-            try:
-                group_part = fb_url.split("groups/")[1].split("/")[0].split("?")[0]
-                self.logger.info(f"🚀 Infiltrating FB Group: {group_part} (Need {quota - total_saved} more)")
-                
-                # REINTENTOS: Si no encontramos suficientes, bajamos más
-                attempts = 0
-                while total_saved < quota and attempts < 3:
-                    attempts += 1
-                    # Aumentamos agresividad en cada intento si no hay suficiente
-                    limit_to_fetch = (quota - total_saved) * 15 
-                    scraper = FacebookScraper(group_part, limit=max(limit_to_fetch, 50))
-                    
-                    leads = await scraper.scrape()
-                    if not leads: break
-                    
-                    batch_saved = 0
-                    for lead in leads:
-                        if total_saved >= quota: break
-                        
-                        cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
-                        if cleaned:
-                            cleaned['url'] = lead['url']
-                            cleaned['images'] = lead['images']
-                            await self.connector.upsert_property(cleaned)
-                            total_saved += 1
-                            batch_saved += 1
-                    
-                    self.logger.info(f"   📊 Attempt {attempts}: {batch_saved} real estate leads verified.")
-                    if batch_saved == 0: break # Si en una tanda no hay nada inmobiliario, probablemente no haya más
-                    
-            except Exception as e:
-                self.logger.error(f"Error in FB group scrape ({fb_url}): {e}")
-
-    async def _process_single_url(self, url):
-        if "facebook.com" in url:
-            from scrapers.facebook_scraper import FacebookScraper
-            try:
-                group_part = url.split("groups/")[1].split("/")[0].split("?")[0]
-                scraper = FacebookScraper(group_part, limit=30)
-                leads = await scraper.scrape()
+            chunk = fb_groups[i : i + self.max_parallel_groups]
+            logger.info(f"🚀 Lanzando escuadrón sobre {len(chunk)} grupos: {chunk}")
+            
+            # Lanzamos los rascadores en paralelo
+            tasks = [self._scrape_and_verify(group_url, quota - total_verified_leads) for group_url in chunk]
+            chunk_results = await asyncio.gather(*tasks)
+            
+            # Recolectamos y sumamos
+            for leads in chunk_results:
                 if leads:
-                    for lead in leads:
-                        cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
-                        if cleaned:
-                            cleaned['url'] = lead['url']
-                            cleaned['images'] = lead['images']
-                            await self.connector.upsert_property(cleaned)
-            except Exception as e:
-                self.logger.error(f"Error parsing Facebook URL: {e}")
+                    total_verified_leads += len(leads)
+                    all_results.extend(leads)
+            
+            logger.info(f"📊 Estado de la misión: {total_verified_leads}/{quota} leads validados.")
+            
+            if total_verified_leads >= quota:
+                logger.info("🎯 ¡Cuota alcanzada! Deteniendo infiltración masiva.")
+                break
+
+        logger.info(f"🏁 Misión Finalizada. {total_verified_leads} leads totales inyectados en el sistema.")
+        return all_results
+
+    async def _scrape_and_verify(self, group_url: str, remaining_quota: int) -> List[Dict[str, Any]]:
+        """Tarea individual de rascado y validación"""
+        try:
+            # Calculamos un límite proporcional para este grupo
+            # Si nos faltan 5, le pedimos 50 brutos para asegurar
+            fetch_limit = max(50, remaining_quota * 10)
+            
+            scraper = FacebookScraper(group_url, limit=fetch_limit)
+            leads = await scraper.scrape()
+            
+            if not leads:
+                return []
+                
+            # Guardamos en la DB (Deduplicación semántica ya integrada en el scraper)
+            saved_count = 0
+            for lead in leads:
+                success = await self.insforge.upsert_property(lead)
+                if success: saved_count += 1
+                
+            logger.info(f"✅ Grupo {group_url}: {saved_count} nuevos leads inyectados.")
+            return leads[:saved_count] if saved_count > 0 else []
+            
+        except Exception as e:
+            logger.error(f"❌ Error crítico en grupo {group_url}: {e}")
+            return []
