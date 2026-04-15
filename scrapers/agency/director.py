@@ -24,9 +24,14 @@ class DirectorAgent:
             fb_groups = ['41757906864', '1018337428507491', '397742921612774']
             logger.info("ℹ️ Usando grupos por defecto del escuadrón.")
         
-        # Normalizamos a lista si viene como string
+        # Normalizamos a lista (Evitando el bug de recorrer letras una a una)
         if isinstance(fb_groups, str):
-            fb_groups = [g.strip() for g in fb_groups.split(",")]
+            if "," in fb_groups:
+                fb_groups = [g.strip() for g in fb_groups.split(",")]
+            else:
+                fb_groups = [fb_groups.strip()]
+        elif not isinstance(fb_groups, list):
+            fb_groups = [str(fb_groups)]
 
         logger.info(f"🕵️‍♂️ Iniciando Misión de Captación Masiva. Objetivo: {quota} leads nuevos.")
         

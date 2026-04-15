@@ -28,27 +28,33 @@ class FacebookScraper(BaseScraper):
         """Recorre una lista de grupos compartiendo la misma sesión de login"""
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
+            # Gestión de Sesión y LOGIN (Forzando Inglés para estabilidad)
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1"
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1",
+                locale="en-US"
             )
             page = await context.new_page()
             
-            # --- FASE 1: LOGIN ÚNICO ---
+            # 1. FASE LOGIN
             if self.user and self.password:
-                logger.info(f"🔑 [Fase Login] Iniciando sesión única para {len(groups)} grupos...")
+                logger.info(f"🔑 [Fase Login] Identificando a {self.user}...")
                 try:
                     await page.goto("https://m.facebook.com/login", wait_until="networkidle")
-                    # Limpiamos anuncios/cookies si aparecen
-                    cookie_btns = await page.locator('button:has-text("Aceptar"), button:has-text("Rechazar"), button:has-text("cookies")').all()
+                    
+                    # Limpieza agresiva de Cookies/Muros (Ignorando Cancelares)
+                    cookie_btns = await page.locator('button:has-text("Accept"), button:has-text("Aceptar"), button:has-text("Allow")').all()
                     for b in cookie_btns:
                         if await b.is_visible(): await b.click()
                     
                     await page.fill('input[name="email"]', self.user)
                     await page.fill('input[name="pass"]', self.password)
-                    login_btn = page.locator('button[name="login"], button[type="submit"], [data-sigil="m_login_button"]')
+                    
+                    # Buscamos el botón de login real (Evitando "Cancel", "Отмена", etc)
+                    login_btn = page.locator('button[name="login"], button[type="submit"]').filter(has_not_text="Cancel").filter(has_not_text="Отмена")
                     await login_btn.first.click()
+                    
                     await page.wait_for_timeout(5000)
-                    logger.info("✅ Login completado con éxito.")
+                    logger.info("✅ Login procesado.")
                 except Exception as e:
                     logger.warning(f"⚠️ Error en login: {e}. Intentando continuar como anónimo...")
 
