@@ -53,6 +53,15 @@ class AnalystAgent(BaseAgent):
                 
                 data = json.loads(content)
                 
+                # Saneamiento para evitar errores de base de datos (Not Null Constraint)
+                if data.get("price") is None:
+                    data["price"] = 0
+                else:
+                    try:
+                        data["price"] = float(data["price"])
+                    except:
+                        data["price"] = 0
+                
                 # Enriquecimiento y normalización
                 content_hash = hashlib.md5(raw_content.encode()).hexdigest()[:10]
                 data["external_id"] = f"{source[:2].upper()}-{content_hash}"
