@@ -4,7 +4,7 @@ import json
 import hashlib
 import os
 from agency.base_agent import BaseAgent
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,69 @@ class AnalystAgent(BaseAgent):
         # Usamos variable de entorno para máxima seguridad (Evitamos bloqueos de GitHub)
         self.openai_key = os.environ.get("OPENAI_API_KEY")
         self.openai_url = "https://api.openai.com/v1/chat/completions"
+
+    async def parse_bulk_text(self, raw_text: str, source: str) -> List[Dict[str, Any]]:
+        """Analiza un listado masivo y extrae múltiples propiedades de golpe (Modo Ahorro)"""
+        logger.info(f"🧠 AI Bulk Extraction: Procesando listado masivo de {source}...")
+        
+        headers = {
+            "Authorization": f"Bearer {self.openai_key}",
+            "Content-Type": "application/json"
+        }
+        
+        prompt = f"""
+        Actúa como un experto buscador de inversiones inmobiliarias. 
+        Analiza el siguiente texto extraído de un listado de {source} y extrae TODAS las propiedades que veas.
+        
+        Para cada propiedad, necesito este JSON:
+        {{
+            "title": "título descriptivo",
+            "price": número (obligatorio),
+            "city": "ciudad",
+            "description": "resumen breve",
+            "rooms": número,
+            "url": "url del anuncio si aparece"
+        }}
+        
+        Devuelve SOLO un array JSON de objetos. Si no hay propiedades claras, devuelve [].
+        ¡IMPORTANTE! Si el precio no es un número claro, pon 0. No dejes el campo vacío.
+        
+        Texto a analizar:
+        {raw_text[:12000]}
+        """
+
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"}
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(self.openai_url, json=payload, headers=headers)
+                content = response.json()['choices'][0]['message']['content']
+                
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0].strip()
+                    
+                data = json.loads(content)
+                leads = data.get("properties", data) if isinstance(data, dict) else data
+                
+                for lead in leads:
+                    lead["source"] = source
+                    lead["price"] = self._clean_price(lead.get("price"))
+                    
+                logger.info(f"✅ Extracción masiva completada: {len(leads)} candidatos encontrados.")
+                return leads
+        except Exception as e:
+            logger.error(f"❌ Error en extracción masiva AI: {e}")
+            return []
+
+    def _clean_price(self, price_val):
+        try:
+            return float(price_val)
+        except:
+            return 0
 
     async def parse_raw_text(self, raw_content: str, source: str = "Facebook") -> Optional[Dict[str, Any]]:
         """Extrae datos inmobiliarios estructurados usando OpenAI GPT-4o-mini"""
