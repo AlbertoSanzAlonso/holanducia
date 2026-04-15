@@ -23,6 +23,10 @@ class HunterAgent(BaseAgent):
         url = search_urls.get(portal)
         if not url: return []
         
+        # Para Facebook no necesitamos Playwright aquí, el scraper especializado lo gestionará
+        if portal == "Facebook":
+            return [url]
+        
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(
