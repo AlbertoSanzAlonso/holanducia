@@ -1,30 +1,27 @@
 version: '3.8'
 
 services:
-  # La API que se comunica con el frontend y tu Dashboard
+  # La API de FastAPI
   api:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: holanducia_api
     restart: always
     ports:
       - "8000:8000"
-    env_file:
-      - .env
-    depends_on:
-      - redis
+    # Las variables se inyectan desde el panel de Coolify
 
-  # El trabajador que lanza los scrapers periódicamente
+  # El Worker que ejecuta los scrapers
   worker:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: holanducia_worker
     restart: always
     command: ["python", "scrapers/main.py"]
-    env_file:
-      - .env
-    depends_on:
-      - redis
 
-  # Base de datos rápida en memoria para tareas y cache
+  # Redis para deduplicación y tareas
   redis:
     image: redis:alpine
     container_name: holanducia_redis
