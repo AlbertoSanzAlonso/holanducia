@@ -82,33 +82,32 @@ class FacebookScraper(BaseScraper):
                 
                 # Proceso de rascado del grupo
                 unique_posts = set()
-                for scroll in range(20): # 20 scrolls por grupo es suficiente para captar lo nuevo
-                    # Expandir "Ver más"
+                for scroll in range(30): # Aumentamos profundidad a 30 scrolls
+                    # Expandir "Ver más" (imprescindible para ver el anuncio completo)
                     try:
                         btns = await page.get_by_text("Ver más").all()
-                        for b in btns[:3]: # Solo los primeros para no perder tiempo
+                        for b in btns[:5]:
                             if await b.is_visible(): await b.click()
                     except: pass
                     
                     full_text = await page.evaluate("document.body.innerText")
-                    # Marcadores bilingües para máxima estabilidad
+                    # Marcadores bilingües
                     markers = [
                         "Compartir", "Share", 
                         "Comentar", "Comment", 
                         "Me gusta", "Like", 
-                        "Hace 1 día", "1d", 
-                        "Hace 2 días", "2d",
-                        "Yesterday", "Ayer",
                         "Just now", "Ahora mismo"
                     ]
                     pattern = "|".join(re.escape(m) for m in markers)
                     fragments = re.split(pattern, full_text)
                     
                     for frag in fragments:
-                        if len(frag) > 120: unique_posts.add(frag.strip())
+                        # Bajamos el listón a 50 caracteres para no perder anuncios cortos
+                        if len(frag.strip()) > 50: 
+                            unique_posts.add(frag.strip())
                     
-                    await page.mouse.wheel(0, 1000)
-                    await page.wait_for_timeout(1000)
+                    await page.mouse.wheel(0, 1200)
+                    await page.wait_for_timeout(1200)
 
                 # Mandamos los fragmentos a analizar
                 for post_text in unique_posts:
