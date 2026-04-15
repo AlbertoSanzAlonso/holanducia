@@ -19,106 +19,83 @@ class FacebookScraper(BaseScraper):
         self.session_path = "/app/fb_session.json"
 
     async def scrape(self):
-        logger.info(f"👥 [Extracción Bruta] Grupo: {self.group_url}")
+        logger.info(f"👥 [Infiltración Total] Grupo: {self.group_url}")
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             iphone = p.devices['iPhone 13']
             context = await browser.new_context(**iphone)
-            if os.path.exists(self.session_path):
-                # Omitimos carga de cookies directa por ahora para asegurar login fresco si falla
-                pass
-            
             page = await context.new_page()
 
-            # 1. Navegación y Login
+            # 1. Navegación y Login (se mantiene igual, es sólido)
             await page.goto(self.group_url, wait_until="domcontentloaded")
             await page.wait_for_timeout(5000)
 
             if await page.query_selector('input[name="email"]') or "login" in page.url:
-                logger.info("🔐 Realizando login en versión móvil...")
-                try:
-                    cookie_btn = await page.query_selector('button:has-text("Aceptar")')
-                    if cookie_btn: await cookie_btn.click(); await page.wait_for_timeout(2000)
-                except: pass
+                await self._perform_login(page, context)
 
-                await page.fill('input[name="email"]', self.user)
-                await page.fill('input[name="pass"]', self.password)
-                await page.click('button[name="login"]')
-                await page.wait_for_timeout(10000)
-                
-                # Saltar el "Guardar información de inicio de sesión"
-                try:
-                    not_now = await page.query_selector('text="Ahora no", text="Not Now"')
-                    if not_now: await not_now.click(); await page.wait_for_timeout(3000)
-                except: pass
-                
-                await context.storage_state(path=self.session_path)
-
-            # 2. Bucle de Excavación Dinámica (Más agresivo)
-            logger.info(f"🚜 Iniciando excavación dinámica (Objetivo: {self.limit} leads)...")
-            scroll_cycles = 0
+            # 2. Excavación con detección por contenido (No por etiquetas)
+            logger.info(f"🚜 Escaneando profundamente (Objetivo: {self.limit} leads de calidad)...")
             
-            for _ in range(20):
+            for scroll_idx in range(25):
                 await page.evaluate("window.scrollBy(0, 3000)")
-                await page.wait_for_timeout(3000) # Más tiempo para cargar
+                await page.wait_for_timeout(2500)
                 
-                # Intentar pulsar "Ver más publicaciones" si aparece
+                # Clic en "Ver más" de forma constante durante el scroll
                 try:
-                    more_btn = await page.query_selector('text="Ver más publicaciones", text="Show more posts"')
-                    if more_btn: 
-                        await more_btn.click()
-                        logger.info("➕ Pulsado 'Ver más publicaciones'...")
+                    expand_btns = await page.query_selector_all('text="Ver más", text="See more", text="ver mais"')
+                    for b in expand_btns: 
+                        if await b.is_visible(): await b.click()
                 except: pass
                 
-                scroll_cycles += 1
-                if scroll_cycles % 5 == 0:
-                    # Selector más amplio para detectar posts móviles
-                    current_items = await page.query_selector_all('div[role="article"], article, div[data-ft]')
-                    logger.info(f"   🚜 Ciclo {scroll_cycles}: {len(current_items)} elementos detectados...")
+                if scroll_idx % 5 == 0:
+                    # Usamos JS para contar bloques de texto con interés inmobiliario real
+                    found_count = await page.evaluate('''() => {
+                        const texts = document.body.innerText.split('Compartir');
+                        return texts.filter(t => t.toLowerCase().includes('piso') || t.toLowerCase().includes('casa') || t.toLowerCase().includes('vivienda')).length;
+                    }''')
+                    logger.info(f"   🚜 Escaneo {scroll_idx}: ~{found_count} candidatos potenciales detectados...")
 
-            # 2.5 Expandir todo antes de extraer
-            logger.info("📄 Expandiendo descripciones finales...")
-            see_more_btns = await page.query_selector_all('text="Ver más", text="See more", text="Más", text="Ещё", text="ver mais"')
-            for btn in see_more_btns:
-                try: 
-                    if await btn.is_visible(): 
-                        await btn.click()
-                except: continue
-            await page.wait_for_timeout(2000)
-
-            # 3. Captura con selector ultra-agresivo
-            # Buscamos cualquier div que parezca un post por su estructura o contenido
-            items = await page.query_selector_all('div[role="article"], article, div[data-ft]')
-            logger.info(f"📊 {len(items)} posts en bruto encontrados. Procesando...")
+            # 3. EXTRACCIÓN POR FRAGMENTACIÓN (La técnica definitiva)
+            # Facebook oculta los posts, pero el texto está ahí. Vamos a fragmentar por "Compartir" u otro separador común.
+            raw_text = await page.evaluate('() => document.body.innerText')
+            # Los posts en m.facebook suelen terminar o tener cerca la palabra "Compartir" o "Me gusta"
+            fragments = re.split(r'Me gusta|Compartir|Me encanta', raw_text)
             
-            seen_texts = set()
-            for item in items:
+            logger.info(f"📑 Analizando {len(fragments)} fragmentos de texto en bruto...")
+            
+            seen_hashes = set()
+            for frag in fragments:
                 if len(self.results) >= self.limit: break
-                try:
-                    text = await item.inner_text()
-                    if len(text) < 60 or text in seen_texts: continue
-                    seen_texts.add(text)
-                    
-                    # URL del post (buscando enlaces que funcionen)
-                    post_url = self.group_url
-                    links = await item.query_selector_all('a')
-                    for l in links:
-                        href = await l.get_attribute('href')
-                        if href and ('story.php' in href or '/posts/' in href or '/permalink/' in href):
-                            post_url = f"https://m.facebook.com{href}" if href.startswith('/') else href
-                            break
+                
+                clean_frag = frag.strip()
+                if len(clean_frag) < 100: continue
+                
+                # Deduplicación por hash
+                f_hash = hashlib.md5(clean_frag[:200].encode()).hexdigest()
+                if f_hash in seen_hashes: continue
+                seen_hashes.add(f_hash)
 
-                    # Imagen
-                    img_el = await item.query_selector('img')
-                    img_url = await img_el.get_attribute('src') if img_el else "https://images.unsplash.com/photo-1560518883-ce09059eeffa"
-                    
+                # Si el fragmento tiene chicha inmobiliaria, lo guardamos
+                if any(kw in clean_frag.lower() for kw in ['piso', 'casa', 'alquiler', 'vendo', 'hab', 'baño']):
                     self.results.append({
-                        "description": text,
-                        "url": post_url.split('?')[0],
-                        "images": [img_url]
+                        "description": clean_frag,
+                        "url": self.group_url, # En fragmentación masiva, linkeamos al grupo
+                        "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa"]
                     })
-                except: continue
 
             await browser.close()
+            logger.info(f"✅ Extracción finalizada: {len(self.results)} candidatos enviados al Analista.")
             return self.results
+
+    async def _perform_login(self, page, context):
+        logger.info("🔐 Realizando login...")
+        try:
+            cookie_btn = await page.query_selector('button:has-text("Aceptar")')
+            if cookie_btn: await cookie_btn.click()
+        except: pass
+        await page.fill('input[name="email"]', self.user)
+        await page.fill('input[name="pass"]', self.password)
+        await page.click('button[name="login"]')
+        await page.wait_for_timeout(8000)
+        await context.storage_state(path=self.session_path)
