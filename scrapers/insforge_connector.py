@@ -85,3 +85,19 @@ class InsForgeConnector:
                 return len(response.json()) > 0
             except:
                 return False
+
+    async def upsert_scraping_status(self, status: str, message: str):
+        """Updates the latest scraping request with a specific status and message"""
+        # 1. Obtener la ID de la última misión
+        url = f"{self.oss_host}/api/database/records/scraping_requests?select=id&order=requested_at.desc&limit=1"
+        async with httpx.AsyncClient() as client:
+            try:
+                res = await client.get(url, headers=self.headers)
+                if res.status_code == 200 and res.json():
+                    last_id = res.json()[0]['id']
+                    # 2. Actualizarla con el estado de error/bloqueo
+                    up_url = f"{self.oss_host}/api/database/records/scraping_requests?id=eq.{last_id}"
+                    await client.patch(up_url, json={"status": status, "error_message": message}, headers=self.headers)
+                    logger.info(f"🚨 Status reported to DB: {status}")
+            except Exception as e:
+                logger.error(f"Failed to report scraping status: {e}")

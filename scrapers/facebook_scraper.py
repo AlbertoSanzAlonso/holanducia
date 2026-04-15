@@ -55,7 +55,9 @@ class FacebookScraper(BaseScraper):
                 
                 # Detectar Checkpoint de seguridad
                 if "checkpoint" in page.url or await page.query_selector('input[name="approvals_code"]'):
-                    logger.error(f"🚨 BLOQUEO DE SEGURIDAD detectado. Facebook pide verificación. URL: {page.url}")
+                    logger.error(f"🚨 BLOQUEO DE SEGURIDAD detectado. URL: {page.url}")
+                    # Avisamos a la base de datos para que la App lo muestre
+                    await self.connector.upsert_scraping_status("security_block", f"Facebook requiere verificación: {page.url}")
                     await context.storage_state(path=self.session_path)
                     await browser.close()
                     return

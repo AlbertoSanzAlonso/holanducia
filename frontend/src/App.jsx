@@ -29,6 +29,7 @@ function App() {
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [errorField, setErrorField] = useState(null)
+  const [securityBlock, setSecurityBlock] = useState(null)
 
   const fetchData = async () => {
     setLoading(true)
@@ -72,7 +73,25 @@ function App() {
     fetchData()
   }
 
-  useEffect(() => { fetchData() }, [])
+  const checkScrapingStatus = async () => {
+    const { data } = await insforge.database
+      .from('scraping_requests')
+      .select('*')
+      .order('requested_at', { ascending: false })
+      .limit(1)
+    
+    if (data?.[0]?.status === 'security_block') {
+      setSecurityBlock(data[0])
+    } else {
+      setSecurityBlock(null)
+    }
+  }
+
+  useEffect(() => { 
+    fetchData()
+    const interval = setInterval(checkScrapingStatus, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   const filteredProperties = properties.filter(p => {
     const s = searchTerm.toLowerCase()
@@ -140,6 +159,42 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* Security Block Alert */}
+        <AnimatePresence>
+          {securityBlock && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+              className="bg-orange-600 text-white px-6 lg:px-16 overflow-hidden shadow-2xl z-40"
+            >
+              <div className="py-6 flex flex-col sm:flex-row items-center justify-between gap-6 border-b border-white/10">
+                <div className="flex items-center gap-6">
+                  <div className="p-4 bg-white/20 rounded-2xl animate-pulse">
+                    <AlertTriangle size={32} />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-black uppercase tracking-tight">Acción Requerida: Bloqueo de Facebook</h4>
+                    <p className="text-white/80 font-bold text-sm">El robot necesita que confirmes el inicio de sesión para continuar.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <a 
+                    href="https://www.facebook.com" target="_blank" rel="noreferrer"
+                    className="bg-white text-orange-600 px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-50 transition-all active:scale-95"
+                  >
+                    Confirmar en Facebook
+                  </a>
+                  <button 
+                    onClick={() => setSecurityBlock(null)}
+                    className="p-4 text-white hover:bg-white/10 rounded-2xl transition-all"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {view === 'dashboard' ? (
           <section className="bg-white p-6 lg:p-16 min-h-screen">
