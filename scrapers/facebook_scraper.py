@@ -21,10 +21,8 @@ class FacebookScraper(BaseScraper):
         logger.info(f"👥 Iniciando rascado de Facebook en el grupo: {self.group_url}")
         
         async with async_playwright() as p:
-            # Iniciamos el navegador en modo "sigilo" (simplificado)
             browser = await p.chromium.launch(headless=True)
             
-            # Intentamos cargar la sesión previa para no loguearnos siempre
             context_args = {}
             if os.path.exists(self.session_path):
                 context_args["storage_state"] = self.session_path
@@ -42,93 +40,59 @@ class FacebookScraper(BaseScraper):
                 
                 logger.info("🔐 Realizando login en Facebook...")
                 
-                # Aceptar cookies si aparecen
-                cookie_selectors = [
-                    'button[data-cookiebanner="accept_button"]',
-                    'button[title="Permitir todas las cookies"]',
-                    'button:has-text("Aceptar todas")',
-                    'div[aria-label="Aceptar todas"]'
-                ]
-                for selector in cookie_selectors:
+                # Aceptar cookies
+                cookie_selectors = ['button[data-cookiebanner="accept_button"]', 'button[title="Permitir todas las cookies"]', 'button:has-text("Aceptar todas")']
+                for s in cookie_selectors:
                     try:
-                        btn = await page.query_selector(selector)
-                        if btn:
-                            await btn.click()
-                            logger.info("🍪 Cookies aceptadas.")
-                            await page.wait_for_timeout(2000)
-                            break
+                        btn = await page.query_selector(s)
+                        if btn: await btn.click(); await page.wait_for_timeout(2000); break
                     except: continue
 
                 await page.fill('input[name="email"]', self.user)
                 await page.fill('input[name="pass"]', self.password)
+                await page.keyboard.press("Enter")
+                await page.wait_for_timeout(10000) 
                 
-                # Intentar varios botones de login
-                login_btn_selectors = ['button[name="login"]', 'button[type="submit"]', '[data-testid="royal_login_button"]']
-                logged_in = False
-                for selector in login_btn_selectors:
-                    try:
-                        btn = await page.query_selector(selector)
-                        if btn:
-                            await btn.click()
-                            logged_in = True
-                            break
-                    except: continue
-                
-                if not logged_in:
-                    await page.keyboard.press("Enter") # Último recurso
-                
-                await page.wait_for_timeout(8000) # Más tiempo para entrar
-                
-                # Guardamos la sesión para la próxima vez
+                # Detectar Checkpoint de seguridad
+                if "checkpoint" in page.url or await page.query_selector('input[name="approvals_code"]'):
+                    logger.error(f"🚨 BLOQUEO DE SEGURIDAD detectado. Facebook pide verificación. URL: {page.url}")
+                    await context.storage_state(path=self.session_path)
+                    await browser.close()
+                    return
+
                 await context.storage_state(path=self.session_path)
                 logger.info("✅ Sesión guardada.")
 
             # 2. Ir al grupo
-            await page.goto(self.group_url)
-            await page.wait_for_timeout(3000)
-
-            # 3. Extraer posts (Scrolleo un poco)
-            for _ in range(3): # Scroll 3 veces para captar posts
-                await page.mouse.wheel(0, 1000)
-                await page.wait_for_timeout(2000)
-
-            # Palabras clave que definen una oportunidad inmobiliaria
-            KEYWORDS = ["piso", "casa", "vivienda", "inmueble", "terreno", "parcela", "alquilo", "vendo", "finca", "chalet", "estudio", "loft", "duplex"]
-            # Palabras que suelen indicar ruido (no inmobiliario)
-            NOISE = ["coche", "moto", "mueble", "sofá", "tv", "empleo", "trabajo", "regalo", "iphone"]
-            
-            # 4. Ir al grupo
-            await page.goto(self.group_url, wait_until="networkidle")
-            
-            # 5. Validar si estamos logueados o nos ha echado
-            if await page.query_selector('form[data-testid="royal_login_form"]') or await page.query_selector('input[name="email"]'):
-                logger.error("❌ ERROR: No estamos logueados en Facebook. La sesión ha caducado o el login falló.")
-                await browser.close()
-                return
-
-            logger.info(f"✅ Dentro del grupo: {self.group_url}")
-            # Esperar a que carguen los posts
+            await page.goto(self.group_url, wait_until="domcontentloaded")
             await page.wait_for_timeout(5000)
             
-            # Intentar varios selectores por si Facebook cambia
-            posts = await page.query_selector_all('div[role="feed"] > div, div[data-ad-preview="message"], div[data-testid="post_message"]')
-            
-            if not posts:
-                logger.warning("⚠️ No se han encontrado posts con los selectores actuales. Intentando scroll...")
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(3000)
-                posts = await page.query_selector_all('div[role="feed"] > div, div[data-ad-preview="message"], div[data-testid="post_message"]')
+            # 3. Validar login de verdad
+            is_logged_in = await page.query_selector('[aria-label="Notificaciones"]') or await page.query_selector('[aria-label="Perfil"]')
+            if not is_logged_in:
+                # Intento extra: a veces el selector de login sigue ahí pero estamos dentro
+                if await page.query_selector('input[name="email"]'):
+                    logger.error(f"❌ ERROR: Seguimos fuera o sesión invalidada. URL: {page.url}")
+                    await browser.close()
+                    return
 
+            logger.info("✅ Login confirmado dentro del grupo.")
+
+            # 4. Scroll para cargar contenido
+            for _ in range(3):
+                await page.mouse.wheel(0, 1500)
+                await page.wait_for_timeout(3000)
+
+            # 5. Extraer posts
+            posts = await page.query_selector_all('div[role="feed"] > div, div[data-ad-preview="message"], div[data-testid="post_message"]')
             logger.info(f"📊 Analizando {len(posts)} posibles posts...")
             
             for i, post in enumerate(posts):
-                if len(self.results) >= self.limit:
-                    break
+                if len(self.results) >= self.limit: break
                 try:
                     content = await post.inner_text()
                     content_lower = content.lower()
                     
-                    # Log de lo que estamos viendo (primeros 50 caracteres)
                     preview = content_lower[:50].replace('\n', ' ')
                     logger.info(f"  [Post {i+1}] Visto: {preview}...")
                     
@@ -136,30 +100,28 @@ class FacebookScraper(BaseScraper):
                     is_noise = any(kw in content_lower for kw in ['mueble', 'sofá', 'mesa', 'coche', 'busco', 'necesito'])
                     
                     if is_real_estate and not is_noise:
-                        logger.info(f"  ✅ ¡Oportunidad detectada! Guardando...")
-                        # Extraer link (si existe) y data básica
+                        logger.info(f"  ✅ ¡Oportunidad detectada!")
                         self.results.append({
                             "title": content[:100] + "...",
                             "description": content,
                             "price": self._extract_price(content),
-                            "city": "Málaga", # O extraer de settings
+                            "city": "Málaga",
                             "source": "Facebook",
-                            "url": self.url,
+                            "url": self.group_url,
                             "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000"]
                         })
-                    else:
-                        logger.info(f"  ❌ Descartado (No inmobiliario o Ruido)")
-                        
-                except Exception as e:
-                    continue
+                except: continue
 
             await browser.close()
-            
             if self.results:
                 await self.save_results()
-                logger.info(f"🎉 Se han guardado {len(self.results)} oportunidades de Facebook.")
+                logger.info(f"🎉 Éxito: {len(self.results)} ofertas guardadas.")
 
-if __name__ == "__main__":
-    # Prueba rápida
-    scraper = FacebookScraper("41757906864")
-    asyncio.run(scraper.scrape())
+    def _extract_price(self, text):
+        import re
+        match = re.search(r'(\d+[\d\.,]*)\s?€', text)
+        if match:
+            price_str = match.group(1).replace('.', '').replace(',', '.')
+            try: return float(price_str)
+            except: return 0
+        return 0
