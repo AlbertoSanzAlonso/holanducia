@@ -7,6 +7,59 @@ class AnalystAgent(BaseAgent):
     def __init__(self):
         super().__init__("Analyst")
 
+    async def parse_raw_text(self, raw_content: str, source: str = "Facebook") -> Optional[Dict[str, Any]]:
+        """Uses AI (Mocked or real LLM) to extract structured data from raw social media text"""
+        self.logger.info(f"AI Parsing raw {source} content...")
+        
+        # En una fase real, aquí llamaríamos a OpenAI/Claude o a una Edge Function de InsForge.
+        # Por ahora, implementamos una lógica de limpieza avanzada 'pseudo-AI'.
+        
+        try:
+            # Limpieza básica
+            content = raw_content.strip()
+            lines = [l.strip() for l in content.split('\n') if l.strip()]
+            
+            # Intentar extraer precio con lógica reforzada
+            import re
+            price = 0
+            price_match = re.search(r'(\d+[\d\.,]*)\s?(€|euros|e)', content.lower())
+            if price_match:
+                p_str = price_match.group(1).replace('.', '').replace(',', '.')
+                try: price = float(p_str)
+                except: pass
+
+            # Generar un título profesional (IA style)
+            # Si la primera línea es muy corta, combinamos las dos primeras
+            title = lines[0] if len(lines[0]) > 20 else " ".join(lines[:2])
+            title = title[:80] + "..." if len(title) > 80 else title
+            
+            # Metadatos falsos o extraídos
+            import hashlib
+            content_hash = hashlib.md5(content.encode()).hexdigest()[:10]
+            
+            return {
+                "external_id": f"{source[:2].upper()}-{content_hash}",
+                "title": title,
+                "description": content,
+                "price": price,
+                "city": "Málaga", # Opcional: extraer con IA
+                "source": source,
+                "is_individual": any(kw in content.lower() for kw in ["particular", "dueño", "propietario"]),
+                "rooms": self._extract_number(content, r'(\d+)\s?(hab|dorm)'),
+                "size_m2": self._extract_number(content, r'(\d+)\s?(m2|metros|m²)'),
+            }
+        except Exception as e:
+            self.logger.error(f"Raw parsing failed: {e}")
+            return None
+
+    def _extract_number(self, text: str, pattern: str) -> int:
+        import re
+        match = re.search(pattern, text.lower())
+        if match:
+            try: return int(match.group(1))
+            except: return 0
+        return 0
+
     async def analyze_lead(self, url: str) -> Optional[Dict[str, Any]]:
         self.logger.info(f"Deep analyzing lead: {url}")
         

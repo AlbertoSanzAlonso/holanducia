@@ -112,9 +112,7 @@ class FacebookScraper(BaseScraper):
                     continue
 
             await browser.close()
-            if self.results:
-                await self.save_results()
-                logger.info(f"🎉 Éxito: {len(self.results)} ofertas listas en HolanducIA.")
+            return self.results
 
     def _extract_price(self, text):
         # Limpiar texto para buscar precios mejor

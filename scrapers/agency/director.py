@@ -28,7 +28,14 @@ class DirectorAgent:
                 try:
                     group_id = url.split("groups/")[1].split("/")[0]
                     scraper = FacebookScraper(group_id)
-                    await scraper.scrape()
+                    leads = await scraper.scrape()
+                    if leads:
+                        for lead in leads:
+                            cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
+                            if cleaned:
+                                cleaned['url'] = lead['url']
+                                cleaned['images'] = lead['images']
+                                await self.connector.upsert_property(cleaned)
                 except Exception as e:
                     self.logger.error(f"Error parsing Facebook URL: {e}")
                 return # Misión específica terminada
@@ -62,7 +69,14 @@ class DirectorAgent:
                         try:
                             group_id = url.split("groups/")[1].split("/")[0]
                             scraper = FacebookScraper(group_id, limit=max_leads)
-                            await scraper.scrape()
+                            leads = await scraper.scrape()
+                            if leads:
+                                for lead in leads:
+                                    cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
+                                    if cleaned:
+                                        cleaned['url'] = lead['url']
+                                        cleaned['images'] = lead['images']
+                                        await self.connector.upsert_property(cleaned)
                         except Exception as e:
                             self.logger.error(f"Error in automatic FB scrape: {e}")
                 else:
