@@ -18,16 +18,14 @@ class DirectorAgent:
     async def execute_mission(self, request=None):
         self.logger.info("Starting Mission: AI Intelligence Infiltration")
         
-        # CASO 1: Petición específica con URL (ej: Facebook o Idealista puntual)
+        # CASO 1: Petición específica con URL
         if request and request.get('url'):
             url = request['url']
-            self.logger.info(f"🎯 Target Acquired: {url}")
-            
             if "facebook.com" in url:
                 from scrapers.facebook_scraper import FacebookScraper
                 try:
-                    group_id = url.split("groups/")[1].split("/")[0]
-                    scraper = FacebookScraper(group_id)
+                    group_part = url.split("groups/")[1].split("/")[0].split("?")[0]
+                    scraper = FacebookScraper(group_part)
                     leads = await scraper.scrape()
                     if leads:
                         for lead in leads:
@@ -38,30 +36,21 @@ class DirectorAgent:
                                 await self.connector.upsert_property(cleaned)
                 except Exception as e:
                     self.logger.error(f"Error parsing Facebook URL: {e}")
-                return # Misión específica terminada
+                return
         
-        # CASO 2: Misión General Automática (Basada en Settings)
+        # CASO 2: Misión General Automática (Settings)
         settings = await self.connector.get_settings()
-        if not settings:
-            self.logger.error("No user settings found. Mission Aborted.")
-            return
+        if not settings: return
 
-        cities = settings.get("cities") or [""] # Si está vacío, ejecutamos una vez con ciudad vacía
+        cities = settings.get("cities") or [""]
         portals_raw = settings.get("portals")
         portals = [p.strip() for p in portals_raw.split(",")] if portals_raw else ["Facebook"]
         max_leads = settings.get("max_leads_per_portal", 10)
         
-        # Filtros opcionales (pueden venir vacíos)
-        max_price = settings.get("max_price")
-        min_rooms = settings.get("min_rooms")
-
-        self.logger.info(f"Mass Infiltration: {len(portals)} portals. Cities: {cities if cities[0] else 'All'}")
-
         for city in cities:
             for portal in portals:
                 self.logger.info(f"Tasking Hunter with {portal} in {city}")
                 
-                # Si el portal ya es una URL de Facebook, la usamos directamente
                 if "facebook.com/groups/" in portal:
                     urls = [portal]
                 else:
@@ -71,22 +60,25 @@ class DirectorAgent:
                     from scrapers.facebook_scraper import FacebookScraper
                     for fb_url in urls:
                         try:
-                            # Extraer ID del grupo de forma robusta
                             group_part = fb_url.split("groups/")[1].split("/")[0].split("?")[0]
                             self.logger.info(f"🚀 Infiltrating FB Group: {group_part}")
-                            scraper = FacebookScraper(group_part, limit=max_leads)
+                            scraper = FacebookScraper(group_part, limit=50) # Pool grande para elegir
                             leads = await scraper.scrape()
                             if leads:
+                                count = 0
                                 for lead in leads:
+                                    if count >= max_leads: break
                                     cleaned = await self.analyst.parse_raw_text(lead['description'], source="Facebook")
                                     if cleaned:
                                         cleaned['url'] = lead['url']
                                         cleaned['images'] = lead['images']
                                         await self.connector.upsert_property(cleaned)
+                                        count += 1
+                                self.logger.info(f"✅ Mission Success: {count} verified leads saved.")
                         except Exception as e:
                             self.logger.error(f"Error in FB group scrape ({fb_url}): {e}")
                 else:
-                    # OTROS PORTALES (Firecrawl)
+                    # OTROS PORTALES
                     if urls:
                         self.logger.info(f"Tasking Analyst with {len(urls)} candidates.")
                         await self.analyst.analyze(urls, limit=max_leads)

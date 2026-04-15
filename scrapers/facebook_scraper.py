@@ -19,16 +19,15 @@ class FacebookScraper(BaseScraper):
         self.session_path = "/app/fb_session.json"
 
     async def scrape(self):
-        logger.info(f"👥 [Infiltración Total] Grupo: {self.group_url}")
+        logger.info(f"👥 [Extracción Bruta] Grupo: {self.group_url}")
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             iphone = p.devices['iPhone 13']
-            context_args = {**iphone}
+            context = await browser.new_context(**iphone)
             if os.path.exists(self.session_path):
-                context_args["storage_state"] = self.session_path
+                await context.add_cookies((await asyncio.to_thread(self._load_session_cookies)))
             
-            context = await browser.new_context(**context_args)
             page = await context.new_page()
 
             # 1. Navegación y Login
@@ -48,77 +47,53 @@ class FacebookScraper(BaseScraper):
                 await page.wait_for_timeout(10000)
                 await context.storage_state(path=self.session_path)
 
-            # 2. Scrolleo profundo para recabar datos
-            logger.info("🚜 Descargando anuncios recientes...")
-            for _ in range(6):
+            # 2. Scrolleo profundo
+            for _ in range(5):
                 await page.evaluate("window.scrollBy(0, 1500)")
                 await page.wait_for_timeout(2500)
 
-            # 2.5 Expandir todas las descripciones ("Ver más")
-            logger.info("📄 Expandiendo descripciones largas...")
+            # 2.5 Expandir "Ver más"
             see_more_btns = await page.query_selector_all('text="Ver más", text="See more", text="Más", text="Ещё"')
             for btn in see_more_btns:
-                try:
+                try: 
                     if await btn.is_visible(): await btn.click()
                 except: continue
-            await page.wait_for_timeout(2000)
 
-            # 3. Extracción con selectores móviles precisos
+            # 3. Captura masiva para el Analista
             posts = await page.query_selector_all('article, div[role="article"]')
-            logger.info(f"📊 {len(posts)} publicaciones encontradas. Analizando calidad...")
+            logger.info(f"📊 {len(posts)} publicaciones capturadas. Enviando a la IA...")
             
-            for i, post in enumerate(posts):
+            for post in posts:
                 if len(self.results) >= self.limit: break
                 try:
                     text = await post.inner_text()
-                    text_lower = text.lower()
+                    if len(text) < 50: continue
                     
-                    # Filtro de oportunidad
-                    keywords = ['piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'chalet', 'inmueble', 'habitacion', 'estudio']
-                    noise = ['busco', 'necesito', 'demanda', 'mueble', 'sofá', 'coche']
-                    
-                    if any(k in text_lower for k in keywords) and not any(n in text_lower for n in noise):
-                        # Extracción de imagen real
-                        img_el = await post.query_selector('img')
-                        img_url = await img_el.get_attribute('src') if img_el else "https://images.unsplash.com/photo-1560518883-ce09059eeffa"
-                        
-                        content_hash = hashlib.md5(text.encode()).hexdigest()[:12]
-                        price = self._extract_price(text)
-                        
-                        # Buscar enlace real del post (suele estar en el timestamp)
-                        post_url = self.group_url # Por defecto el grupo
-                        link_el = await post.query_selector('a[href*="story.php"], a[href*="/posts/"], a[href*="/permalink/"]')
-                        if link_el:
-                            href = await link_el.get_attribute('href')
-                            if href:
-                                if href.startswith('/'): post_url = f"https://m.facebook.com{href}"
-                                else: post_url = href
+                    # URL Real
+                    post_url = self.group_url
+                    link_el = await post.query_selector('a[href*="story.php"], a[href*="/posts/"], a[href*="/permalink/"]')
+                    if link_el:
+                        href = await link_el.get_attribute('href')
+                        if href:
+                            post_url = f"https://m.facebook.com{href}" if href.startswith('/') else href
 
-                        logger.info(f"  ✅ Detectado: {text[:40]}... (URL: {post_url[:30]}...)")
-                        
-                        self.results.append({
-                            "external_id": f"FB-{content_hash}",
-                            "title": text.split('\n')[0][:80] if '\n' in text else text[:80],
-                            "description": text,
-                            "price": price,
-                            "city": "Málaga",
-                            "source": "Facebook",
-                            "url": post_url,
-                            "images": [img_url],
-                            "is_individual": "particular" in text_lower or "dueño" in text_lower
-                        })
-                except Exception as e:
-                    logger.debug(f"Error en post {i}: {e}")
-                    continue
+                    # Imagen
+                    img_el = await post.query_selector('img')
+                    img_url = await img_el.get_attribute('src') if img_el else "https://images.unsplash.com/photo-1560518883-ce09059eeffa"
+                    
+                    self.results.append({
+                        "description": text, # Raw text para la IA
+                        "url": post_url.split('?')[0],
+                        "images": [img_url]
+                    })
+                except: continue
 
             await browser.close()
             return self.results
 
-    def _extract_price(self, text):
-        # Limpiar texto para buscar precios mejor
-        text = text.replace('.', '').replace(',', '')
-        match = re.search(r'(\d{3,6})\s?[€|euros|e]', text, re.IGNORE_DECOMPOSITION)
-        if match:
-            try: return float(match.group(1))
-            except: return 0
-        return 0
+    def _load_session_cookies(self):
+        import json
+        try:
+            with open(self.session_path, 'r') as f:
+                return json.load(f).get('cookies', [])
+        except: return []
