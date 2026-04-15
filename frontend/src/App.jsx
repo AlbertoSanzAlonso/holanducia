@@ -60,34 +60,12 @@ function App() {
     }
   }
 
-  const handleManualTrigger = async () => {
+  const handleRefresh = async () => {
     setLoading(true)
     setErrorField(null)
-    console.log("Triggering manual scrape cycle via Direct Functions Domain...");
-    
-    try {
-      const functionsUrl = `https://s7pytj95.functions.insforge.app/trigger-scrape`
-      
-      const res = await fetch(functionsUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_INSFORGE_ANON_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!res.ok) {
-        throw new Error(`Server Error ${res.status}`);
-      }
-
-      console.log("Scrape triggered successfully: 200 OK");
-      // Esperamos un poco para que el worker empiece antes de refrescar
-      setTimeout(fetchProperties, 5000)
-    } catch (err) {
-      console.error("🚨 Error real en el trigger:", err.message)
-      setErrorField(`Error: ${err.message}`)
-      setLoading(false)
-    }
+    console.log("Refrescando datos locales...");
+    await fetchProperties()
+    setLoading(false)
   }
 
   useEffect(() => {
@@ -252,10 +230,10 @@ function App() {
                 </div>
                 <div className="flex items-center gap-3">
                    <button 
-                    onClick={handleManualTrigger}
+                    onClick={handleRefresh}
                     disabled={loading}
-                    title="Ejecutar barrido con filtros actuales"
-                    className={`flex items-center justify-center w-12 h-12 rounded-2xl shadow-lg transition-all disabled:opacity-50 ${errorField ? 'bg-red-500' : 'bg-[#00acee] hover:bg-[#0072b1]'} text-white`}
+                    title="Actualizar vista con datos guardados"
+                    className="flex items-center justify-center w-12 h-12 rounded-2xl shadow-lg transition-all disabled:opacity-50 bg-[#00acee] hover:bg-[#0072b1] text-white"
                    >
                      <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
                    </button>
