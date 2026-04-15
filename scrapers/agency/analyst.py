@@ -59,16 +59,22 @@ class AnalystAgent(BaseAgent):
             return None
 
     async def _fallback_parse(self, content: str, source: str) -> Optional[Dict[str, Any]]:
-        """Emergency regex parsing if LLM fails"""
+        """Emergency regex parsing if LLM fails - STRICT MODE"""
         content_lower = content.lower()
-        if not any(kw in content_lower for kw in ['piso', 'casa', 'vivienda', 'alquiler']):
+        
+        # Filtro Anti-Ruido de grupo (Pintores, Alarmas, Quejas...)
+        black_list = ['pintura', 'pintor', 'alarma', 'policía', 'patinetes', 'coches', 'perro', 'perdido']
+        if any(bad in content_lower for bad in black_list):
+            return None
+
+        if not any(kw in content_lower for kw in ['piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'estudio', 'ref.']):
             return None
             
         content_hash = hashlib.md5(content.encode()).hexdigest()[:10]
         return {
             "external_id": f"{source[:2].upper()}-{content_hash}",
-            "title": "Oportunidad detectada (AI Offline)",
-            "description": content,
+            "title": "Oportunidad detectada (Filtro Manual)",
+            "description": content[:500], # Limitamos para no llenar la DB de basura
             "price": 0,
             "city": "Málaga",
             "source": source

@@ -56,8 +56,10 @@ class FacebookScraper(BaseScraper):
                         if await b.is_visible(): await b.click()
                 except: pass
                 
-                # 2. Ahora CAPTURAMOS el texto completo desplegado
+                # 2. Ahora CAPTURAMOS el texto completo desplegado (Limpiando ruido de UI)
                 visible_text = await page.evaluate("document.body.innerText")
+                # Filtramos el ruido común de Facebook que ensucia la descripción
+                visible_text = re.sub(r'Quienes vivimos aquí.*|Public group.*|Join group.*|About this group.*|There\'s more to see.*|Log in.*|Create new account.*', '', visible_text)
                 accumulated_text += "\n" + visible_text
                 
                 if scroll_idx % 5 == 0:
