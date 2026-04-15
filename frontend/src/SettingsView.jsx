@@ -80,31 +80,31 @@ export default function SettingsView({ insforge }) {
   if (loading) return <div className="p-12 text-slate-400 font-medium">Cargando radar...</div>
 
   return (
-    <div className="p-12 max-w-2xl animate-in fade-in duration-500">
-      <div className="flex justify-between items-center mb-8">
+    <div className="p-8 lg:p-12 max-w-2xl animate-in fade-in duration-500">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-12">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Configuración</h1>
-          <p className="text-slate-500 text-sm mt-1">Controla las fuentes y filtros de inteligencia</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Configuración</h1>
+          <p className="text-slate-400 text-sm mt-2 font-medium">Controla las fuentes y filtros de inteligencia</p>
         </div>
         <button 
           onClick={handleManualUpdate}
           disabled={saving}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold transition-all shadow-lg shadow-emerald-200 active:scale-95 disabled:opacity-50"
+          className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-500/20 active:scale-95 disabled:opacity-50"
         >
           <RefreshCw className={saving ? "animate-spin" : ""} size={18} />
           Actualizar ahora
         </button>
       </div>
       
-      <div className="space-y-6 bg-white p-8 rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50">
+      <div className="space-y-8 bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-200/50">
         <div>
-          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Ciudades de rastreo</label>
+          <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Ciudades de rastreo</label>
           <input 
             type="text" 
-            placeholder="Ej: malaga, benalmadena (dejar vacío para rastrear todo)"
-            value={(settings.cities || []).join(', ')} 
-            onChange={(e) => setSettings({...settings, cities: e.target.value ? e.target.value.split(',').map(s => s.trim()) : []})}
-            className="w-full px-4 py-3 bg-slate-100 rounded-xl border border-transparent focus:border-[#00acee] focus:bg-white focus:ring-4 focus:ring-blue-50 outline-none transition-all font-medium"
+            placeholder="Ej: malaga benalmadena (usa espacios)"
+            value={(settings.cities || []).join(' ')} 
+            onChange={(e) => setSettings({...settings, cities: e.target.value ? e.target.value.split(/\s+/).filter(s => s.trim()) : []})}
+            className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#00acee] focus:bg-white outline-none transition-all font-bold text-slate-700"
           />
         </div>
 
