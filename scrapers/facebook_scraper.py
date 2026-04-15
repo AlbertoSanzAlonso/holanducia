@@ -82,32 +82,37 @@ class FacebookScraper(BaseScraper):
                 
                 # Proceso de rascado del grupo
                 unique_posts = set()
-                for scroll in range(30): # Aumentamos profundidad a 30 scrolls
-                    # Expandir "Ver más" (imprescindible para ver el anuncio completo)
+                for scroll in range(30):
+                    # Expandir anuncios (Crucial para no recibir "None" o info cortada)
                     try:
-                        btns = await page.get_by_text("Ver más").all()
-                        for b in btns[:5]:
-                            if await b.is_visible(): await b.click()
+                        expand_btns = await page.get_by_text(re.compile(r"Ver más|See more", re.IGNORECASE)).all()
+                        for b in expand_btns[:10]:
+                            if await b.is_visible(): 
+                                await b.click(timeout=1000)
+                                await page.wait_for_timeout(300)
                     except: pass
                     
                     full_text = await page.evaluate("document.body.innerText")
-                    # Marcadores bilingües
+                    
+                    # Marcadores de "Corte" para separar un post de otro
                     markers = [
                         "Compartir", "Share", 
                         "Comentar", "Comment", 
-                        "Me gusta", "Like", 
-                        "Just now", "Ahora mismo"
+                        "Me gusta", "Like",
+                        "Just now", "Ahora mismo",
+                        "1 min", "1 h", "1 d", "Yesterday", "Ayer"
                     ]
                     pattern = "|".join(re.escape(m) for m in markers)
                     fragments = re.split(pattern, full_text)
                     
                     for frag in fragments:
-                        # Bajamos el listón a 50 caracteres para no perder anuncios cortos
-                        if len(frag.strip()) > 50: 
-                            unique_posts.add(frag.strip())
+                        clean_frag = frag.strip()
+                        # Si tiene chicha (más de 60 chars) y no es solo ruido de interfaz
+                        if len(clean_frag) > 60:
+                            unique_posts.add(clean_frag)
                     
-                    await page.mouse.wheel(0, 1200)
-                    await page.wait_for_timeout(1200)
+                    await page.mouse.wheel(0, 1500)
+                    await page.wait_for_timeout(1500)
 
                 # Mandamos los fragmentos a analizar con ESCUDO DE AHORRO
                 logger.info(f"📑 Analizando {len(unique_posts)} candidatos con Escudo de Ahorro activo...")
