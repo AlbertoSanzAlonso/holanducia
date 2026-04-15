@@ -80,7 +80,7 @@ class FacebookScraper(BaseScraper):
                 if any(kw in clean_frag.lower() for kw in ['piso', 'casa', 'alquiler', 'vendo', 'hab', 'baño']):
                     self.results.append({
                         "description": clean_frag,
-                        "url": self.group_url, # En fragmentación masiva, linkeamos al grupo
+                        "url": f"{self.group_url}?post_id={f_hash}", # URL Única para evitar colisiones
                         "images": ["https://images.unsplash.com/photo-1560518883-ce09059eeffa"]
                     })
 
