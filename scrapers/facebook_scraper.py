@@ -32,16 +32,34 @@ class FacebookScraper(BaseScraper):
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             
-            # Gestión de Sesión
-            context = await browser.new_context()
+            # Gestión de Sesión y LOGIN
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1"
+            )
             page = await context.new_page()
             
-            # Login simplificado (Asumimos cookies o login previo si existe)
-            await page.goto(self.group_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2000)
+            # 1. INTENTO DE LOGIN SI HAY CREDENCIALES
+            if self.user and self.password:
+                logger.info(f"🔑 Intentando login como: {self.user}...")
+                try:
+                    await page.goto("https://m.facebook.com/login", wait_until="networkidle")
+                    # Aceptar cookies si aparecen
+                    cookies_btn = await page.get_by_role("button", name="Rechazar cookies").or_(page.get_by_role("button", name="Solo cookies esenciales")).all()
+                    if cookies_btn: await cookies_btn[0].click()
+                    
+                    await page.fill('input[name="email"]', self.user)
+                    await page.fill('input[name="pass"]', self.password)
+                    await page.click('button[name="login"]')
+                    await page.wait_for_timeout(5000) # Esperar a que entre
+                except Exception as e:
+                    logger.warning(f"⚠️ Error durante el login: {e}. Intentando continuar...")
 
-            # 2. Excavación con ACUMULACIÓN GRANULAR
-            logger.info(f"🚜 Aspirando contenido (Objetivo: {self.limit} publicaciones brutas)...")
+            # 2. Navegación al grupo
+            await page.goto(self.group_url, wait_until="domcontentloaded")
+            await page.wait_for_timeout(3000)
+
+            # 3. Excavación con ACUMULACIÓN GRANULAR
+            logger.info("🚜 Aspirando contenido (Objetivo: 100 publicaciones brutas)...")
             unique_posts = set()
             
             for scroll_idx in range(25):
