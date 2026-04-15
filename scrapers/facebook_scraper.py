@@ -40,19 +40,31 @@ class FacebookScraper(BaseScraper):
             
             # 1. INTENTO DE LOGIN SI HAY CREDENCIALES
             if self.user and self.password:
+                # Retraso aleatorio para no atropellarse en el login (Squadron Jitter)
+                import random
+                await asyncio.sleep(random.uniform(1, 5))
+                
                 logger.info(f"🔑 Intentando login como: {self.user}...")
                 try:
-                    await page.goto("https://m.facebook.com/login", wait_until="networkidle")
-                    # Aceptar cookies si aparecen
-                    cookies_btn = await page.get_by_role("button", name="Rechazar cookies").or_(page.get_by_role("button", name="Solo cookies esenciales")).all()
-                    if cookies_btn: await cookies_btn[0].click()
+                    await page.goto("https://m.facebook.com/login", wait_until="networkidle", timeout=60000)
+                    
+                    # Aceptar cookies (varios nombres posibles)
+                    for text in ["Rechazar", "Solo esenciales", "Decline"]:
+                        try:
+                            btn = page.get_by_role("button").filter(has_text=text)
+                            if await btn.is_visible(): await btn.click()
+                        except: pass
                     
                     await page.fill('input[name="email"]', self.user)
                     await page.fill('input[name="pass"]', self.password)
-                    await page.click('button[name="login"]')
-                    await page.wait_for_timeout(5000) # Esperar a que entre
+                    
+                    # Intentar click en varios selectores de botón de login
+                    login_btn = page.locator('button[name="login"], button[type="submit"], [data-sigil="m_login_button"]')
+                    await login_btn.first.click(timeout=10000)
+                    
+                    await page.wait_for_timeout(5000)
                 except Exception as e:
-                    logger.warning(f"⚠️ Error durante el login: {e}. Intentando continuar...")
+                    logger.warning(f"⚠️ Dificultades en el login: {str(e)[:100]}. Intentando continuar...")
 
             # 2. Navegación al grupo
             await page.goto(self.group_url, wait_until="domcontentloaded")
