@@ -45,39 +45,6 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
         exit={{ scale: 0.9, y: 30 }}
         className="relative w-full max-w-6xl bg-white rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col lg:flex-row max-h-[90vh]"
       >
-        {/* Toolbar Superior - Ahora flotando con contraste real */}
-        <div className="absolute top-8 right-8 z-[110] flex gap-3">
-            {!isEditing ? (
-                <button 
-                    onClick={() => setIsEditing(true)}
-                    className="p-4 bg-slate-900 hover:bg-black rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
-                >
-                    <Edit3 size={22} />
-                </button>
-            ) : (
-                <button 
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="p-4 bg-emerald-500 hover:bg-emerald-600 rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
-                >
-                    <Save size={22} />
-                </button>
-            )}
-            <button 
-                onClick={handleDelete}
-                className="p-4 bg-red-500 hover:bg-red-600 rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
-            >
-                <Trash2 size={22} />
-            </button>
-            <div className="w-px bg-slate-200 h-10 mx-2 self-center" />
-            <button 
-                onClick={onClose}
-                className="p-4 bg-slate-100 hover:bg-slate-200 rounded-2xl text-slate-900 transition-all shadow-xl hover:scale-105 active:scale-95"
-            >
-                <X size={22} />
-            </button>
-        </div>
-
         {/* Media Side */}
         <div className="lg:w-2/5 relative h-64 lg:h-auto bg-slate-100">
           <img 
@@ -114,7 +81,40 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
         </div>
 
         {/* Intelligence Side */}
-        <div className="flex-1 p-8 lg:p-12 overflow-y-auto">
+        <div className="flex-1 p-8 lg:p-12 pt-24 lg:pt-32 overflow-y-auto relative">
+          {/* Toolbar - Ahora integrado en el flujo o con espacio garantizado */}
+          <div className="absolute top-8 right-8 z-[110] flex items-center gap-3">
+              {!isEditing ? (
+                  <button 
+                      onClick={() => setIsEditing(true)}
+                      className="p-4 bg-slate-900 hover:bg-black rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95 border border-white/10"
+                  >
+                      <Edit3 size={20} />
+                  </button>
+              ) : (
+                  <button 
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="p-4 bg-emerald-500 hover:bg-emerald-600 rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
+                  >
+                      <Save size={20} />
+                  </button>
+              )}
+              <button 
+                  onClick={handleDelete}
+                  className="p-4 bg-red-500 hover:bg-red-600 rounded-2xl text-white transition-all shadow-2xl hover:scale-105 active:scale-95"
+              >
+                  <Trash2 size={20} />
+              </button>
+              <div className="w-px bg-slate-100 h-8 mx-1" />
+              <button 
+                  onClick={onClose}
+                  className="p-4 bg-slate-100/80 hover:bg-slate-200 rounded-2xl text-slate-900 transition-all shadow-sm hover:scale-105 active:scale-95 border border-slate-200"
+              >
+                  <X size={20} />
+              </button>
+          </div>
+
           {/* Header Data */}
           <div className="flex flex-wrap items-center justify-between gap-6 mb-12">
             <div>
