@@ -110,24 +110,31 @@ class FacebookScraper(BaseScraper):
                     await page.wait_for_timeout(1200)
 
                 # Mandamos los fragmentos a analizar
+                logger.info(f"📑 Analizando {len(unique_posts)} candidatos reales con OpenAI...")
                 for post_text in unique_posts:
-                    if total_leads >= self.limit: break
+                    if total_leads >= self.limit: 
+                        logger.info("🎯 Cuota de misión alcanzada.")
+                        break
                     
                     # Usamos "Facebook" como nombre de fuente limpio
                     ai_data = await self.analyst.parse_raw_text(post_text, "Facebook")
                     if ai_data:
-                        # Deduplicación por contenido
+                        # Generar hash para deduplicación
                         f_hash = hashlib.md5(f"{ai_data['title']}{ai_data['price']}".encode()).hexdigest()[:12]
-                        if await self.is_already_scraped(f_hash): continue
+                        if await self.is_already_scraped(f_hash): 
+                            continue
                         
+                        # Inyección en DB
                         ai_data["url"] = f"{group_url}?post_id={f_hash}"
                         success = await self.connector.upsert_property(ai_data)
-                        if success:
-                            total_leads += 1
-                            await self.mark_as_scraped(f_hash)
-                            logger.info(f"✨ [{total_leads}/{self.limit}] Lead Inyectado: {ai_data['title']}")
+                        
+                        # ¡IMPORTANTE! Aseguramos el conteo
+                        total_leads += 1
+                        await self.mark_as_scraped(f_hash)
+                        logger.info(f"✨ [{total_leads}/{self.limit}] Lead guardado: {ai_data['title']}")
 
             await browser.close()
+            logger.info(f"🏁 Scraper finalizado. Total inyectado: {total_leads}")
             return total_leads
 
     async def scrape(self):
