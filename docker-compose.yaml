@@ -9,7 +9,7 @@ services:
     container_name: holanducia_api
     restart: always
     ports:
-      - "8080:8000"
+      - "9000:8000"
 
   # El Worker que ejecuta los scrapers
   worker:
