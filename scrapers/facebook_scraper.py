@@ -6,6 +6,7 @@ import re
 from typing import List, Dict, Any
 from playwright.async_api import async_playwright
 from base_scraper import BaseScraper
+from agency.analyst import AnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class FacebookScraper(BaseScraper):
         self.user = os.getenv("FB_USER")
         self.password = os.getenv("FB_PASSWORD")
         self.session_path = "/app/fb_session.json"
+        self.analyst = AnalystAgent()
 
     async def scrape(self):
         logger.info(f"👥 [Infiltración Total] Grupo: {self.group_url}")
