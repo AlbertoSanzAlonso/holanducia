@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Save, RefreshCw, Plus, X, Globe, Settings2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { api } from './api'
 
-export default function SettingsView({ insforge }) {
+export default function SettingsView() {
   const [settings, setSettings] = useState({
     cities: [],
     max_price: 300000,
@@ -25,32 +26,22 @@ export default function SettingsView({ insforge }) {
 
   const fetchSettings = async () => {
     setLoading(true)
-    const { data } = await insforge.database
-      .from('user_settings')
-      .select('*')
-      .limit(1)
-      .single()
-    
-    if (data) setSettings({
-        ...data,
-        cities: data.cities || [],
-        facebook_groups: data.facebook_groups || []
-    })
-    setLoading(false)
+    try {
+      const data = await api.getSettings()
+      if (data) setSettings({
+          ...data,
+          cities: data.cities || [],
+          facebook_groups: data.facebook_groups || []
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSave = async () => {
     setSaving(true)
-    const { error } = await insforge.database
-      .from('user_settings')
-      .upsert({
-        ...settings,
-        updated_at: new Date().toISOString()
-      })
-    
-    if (!error) {
-      console.log('Settings saved')
-    }
+    const { id, updated_at, ...payload } = settings
+    await api.saveSettings(payload)
     setSaving(false)
   }
 
@@ -82,18 +73,13 @@ export default function SettingsView({ insforge }) {
     setSaving(true)
     await handleSave()
     
-    const { error } = await insforge.database
-      .from('scraping_requests')
-      .insert({
-        status: 'pending',
-        requested_at: new Date().toISOString(),
-        source_name: 'Manual Trigger'
-      })
+    await api.createScrapingRequest({
+      status: 'pending',
+      source_name: 'Manual Trigger',
+    })
 
-    if (!error) {
-      setNotification('🚀 ¡Radar Activado! El robot está escaneando los grupos ahora mismo.')
-      setTimeout(() => setNotification(null), 5000)
-    }
+    setNotification('🚀 ¡Radar Activado! El robot está escaneando los grupos ahora mismo.')
+    setTimeout(() => setNotification(null), 5000)
     setSaving(false)
   }
 

@@ -11,17 +11,18 @@ A high-performance system designed to capture, analyze, and notify "Flash Opport
 
 ### Local Development
 ```bash
+cp .env.example .env
 docker compose up -d
-# Run API
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
-# Run Worker
-python scrapers/main.py
+# API: http://localhost:9000
+# Frontend dev:
+cd frontend && VITE_API_URL=http://localhost:9000 npm run dev
 ```
 
 ## 🧠 Intelligence Engine
-- **Strategy**: Hybrid approach using InsForge (BaaS) and a private VPS (Scrapers).
-- **Deduplication**: Redis-based filtering before Firecrawl extraction.
-- **Scoring**: Deep analysis based on price trends and catastro data.
+- **Strategy**: Self-hosted stack on VPS (Postgres + Redis + Crawl4AI + Groq).
+- **Database**: PostgreSQL in Docker (fresh schema, no InsForge dependency).
+- **Deduplication**: Redis-based filtering before extraction.
+- **Scoring**: Local opportunity scoring in the FastAPI backend.
 
 ## 📁 Structure
 - `/backend`: FastAPI service (Port 8080 prod / 8000 local).

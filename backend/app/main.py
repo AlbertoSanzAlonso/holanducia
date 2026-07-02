@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.app.routes import router
+
 app = FastAPI(
     title="Real Estate AI Opportunity API",
     description="API for scraping, analyzing and notifying real estate opportunities",
-    version="1.0.0"
+    version="2.0.0",
 )
 
-# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,14 +17,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(router)
+
+
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Real Estate AI Opportunity API", "status": "online"}
+    return {"message": "HolanducIA API", "status": "online", "database": "postgres"}
+
 
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

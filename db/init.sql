@@ -1,0 +1,74 @@
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    color VARCHAR(20) NOT NULL DEFAULT '#00acee'
+);
+
+CREATE TABLE properties (
+    id SERIAL PRIMARY KEY,
+    external_id VARCHAR(64),
+    url VARCHAR(500) NOT NULL UNIQUE,
+    source VARCHAR(100),
+    title VARCHAR(500),
+    price DOUBLE PRECISION DEFAULT 0,
+    city VARCHAR(100),
+    neighborhood VARCHAR(100),
+    address VARCHAR(300),
+    size_m2 DOUBLE PRECISION,
+    rooms INTEGER,
+    bathrooms INTEGER,
+    has_parking BOOLEAN DEFAULT FALSE,
+    has_terrace BOOLEAN DEFAULT FALSE,
+    has_pool BOOLEAN DEFAULT FALSE,
+    is_individual BOOLEAN DEFAULT FALSE,
+    is_agency BOOLEAN DEFAULT TRUE,
+    description TEXT,
+    images JSONB DEFAULT '[]'::jsonb,
+    opportunity_score INTEGER DEFAULT 0,
+    opportunity_reasons JSONB DEFAULT '[]'::jsonb,
+    category_id INTEGER REFERENCES categories(id),
+    catastro_ref VARCHAR(100),
+    year_built INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE user_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    cities TEXT[] DEFAULT ARRAY['malaga'],
+    max_price INTEGER DEFAULT 300000,
+    min_rooms INTEGER DEFAULT 2,
+    min_size_m2 INTEGER DEFAULT 60,
+    portals VARCHAR(200) DEFAULT 'Fotocasa, Habitaclia, Pisos.com, Facebook',
+    max_leads_per_portal INTEGER DEFAULT 10,
+    target_leads INTEGER DEFAULT 10,
+    facebook_groups TEXT[] DEFAULT ARRAY['41757906864', '1018337428507491', '397742921612774'],
+    portal_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT single_settings_row CHECK (id = 1)
+);
+
+CREATE TABLE scraping_requests (
+    id SERIAL PRIMARY KEY,
+    status VARCHAR(50) DEFAULT 'pending',
+    requested_at TIMESTAMPTZ DEFAULT NOW(),
+    processed_at TIMESTAMPTZ,
+    source_name VARCHAR(100),
+    error_message TEXT,
+    target_leads INTEGER,
+    groups TEXT[],
+    portal_urls TEXT[]
+);
+
+INSERT INTO categories (name, color) VALUES
+    ('Oportunidad Caliente', '#ef4444'),
+    ('Seguimiento', '#f59e0b'),
+    ('Descartado', '#64748b');
+
+INSERT INTO user_settings (id) VALUES (1);
+
+CREATE INDEX idx_properties_created_at ON properties (created_at DESC);
+CREATE INDEX idx_properties_opportunity_score ON properties (opportunity_score DESC);
+CREATE INDEX idx_scraping_requests_status ON scraping_requests (status, requested_at DESC);

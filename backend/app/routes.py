@@ -1,0 +1,210 @@
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select, update, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.app.core.database import get_db
+from backend.app.models import Category, Property, ScrapingRequest, UserSettings
+from backend.app.schemas import (
+    BatchCategoryRequest,
+    BatchDeleteRequest,
+    CategoryOut,
+    PropertyCreate,
+    PropertyOut,
+    PropertyUpdate,
+    ScrapingRequestCreate,
+    ScrapingRequestOut,
+    ScrapingRequestUpdate,
+    SettingsOut,
+    SettingsUpdate,
+)
+from backend.app.services.opportunity_service import OpportunityService
+
+router = APIRouter(prefix="/api")
+
+PROPERTY_FIELDS = {
+    "external_id", "url", "source", "title", "price", "city", "neighborhood", "address",
+    "size_m2", "rooms", "bathrooms", "has_parking", "has_terrace", "has_pool",
+    "is_individual", "is_agency", "description", "images", "opportunity_score",
+    "opportunity_reasons", "category_id", "catastro_ref", "year_built",
+}
+
+
+def apply_opportunity_score(data: dict) -> dict:
+    analysis = OpportunityService.calculate_score(
+        current_price=float(data.get("price") or 0),
+        previous_price=None,
+        market_avg_price=3200.0,
+        is_individual=bool(data.get("is_individual")),
+    )
+    data["opportunity_score"] = analysis["score"]
+    data["opportunity_reasons"] = analysis["reasons"]
+    return data
+
+
+def property_to_dict(prop: Property) -> dict:
+    return {field: getattr(prop, field) for field in PROPERTY_FIELDS | {"id", "created_at", "updated_at"}}
+
+
+@router.get("/categories", response_model=List[CategoryOut])
+async def list_categories(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Category).order_by(Category.name))
+    return result.scalars().all()
+
+
+@router.get("/properties", response_model=List[PropertyOut])
+async def list_properties(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Property).order_by(Property.created_at.desc()))
+    return result.scalars().all()
+
+
+@router.post("/properties", response_model=PropertyOut)
+async def upsert_property(payload: PropertyCreate, db: AsyncSession = Depends(get_db)):
+    data = apply_opportunity_score(payload.model_dump())
+    result = await db.execute(select(Property).where(Property.url == data["url"]))
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        for key, value in data.items():
+            setattr(existing, key, value)
+        existing.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    prop = Property(**data)
+    db.add(prop)
+    await db.commit()
+    await db.refresh(prop)
+    return prop
+
+
+@router.patch("/properties/{property_id}", response_model=PropertyOut)
+async def update_property(property_id: int, payload: PropertyUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Property).where(Property.id == property_id))
+    prop = result.scalar_one_or_none()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(prop, key, value)
+
+    if "price" in updates or "is_individual" in updates:
+        analysis = OpportunityService.calculate_score(
+            current_price=float(prop.price or 0),
+            previous_price=None,
+            market_avg_price=3200.0,
+            is_individual=bool(prop.is_individual),
+        )
+        prop.opportunity_score = analysis["score"]
+        prop.opportunity_reasons = analysis["reasons"]
+
+    prop.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(prop)
+    return prop
+
+
+@router.delete("/properties/{property_id}", status_code=204)
+async def delete_property(property_id: int, db: AsyncSession = Depends(get_db)):
+    await db.execute(delete(Property).where(Property.id == property_id))
+    await db.commit()
+
+
+@router.post("/properties/batch-delete", status_code=204)
+async def batch_delete_properties(payload: BatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    if not payload.ids:
+        return
+    await db.execute(delete(Property).where(Property.id.in_(payload.ids)))
+    await db.commit()
+
+
+@router.post("/properties/batch-category", status_code=204)
+async def batch_update_category(payload: BatchCategoryRequest, db: AsyncSession = Depends(get_db)):
+    if not payload.ids:
+        return
+    await db.execute(
+        update(Property)
+        .where(Property.id.in_(payload.ids))
+        .values(category_id=payload.category_id, updated_at=datetime.now(timezone.utc))
+    )
+    await db.commit()
+
+
+@router.get("/settings", response_model=SettingsOut)
+async def get_settings(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserSettings).where(UserSettings.id == 1))
+    settings = result.scalar_one_or_none()
+    if not settings:
+        settings = UserSettings(id=1)
+        db.add(settings)
+        await db.commit()
+        await db.refresh(settings)
+    return settings
+
+
+@router.put("/settings", response_model=SettingsOut)
+async def update_settings(payload: SettingsUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserSettings).where(UserSettings.id == 1))
+    settings = result.scalar_one_or_none()
+    if not settings:
+        settings = UserSettings(id=1)
+        db.add(settings)
+
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(settings, key, value)
+    settings.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(settings)
+    return settings
+
+
+@router.get("/scraping-requests/latest", response_model=Optional[ScrapingRequestOut])
+async def latest_scraping_request(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ScrapingRequest).order_by(ScrapingRequest.requested_at.desc()).limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+@router.get("/scraping-requests/pending", response_model=Optional[ScrapingRequestOut])
+async def pending_scraping_request(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ScrapingRequest)
+        .where(ScrapingRequest.status == "pending")
+        .order_by(ScrapingRequest.requested_at.asc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+@router.post("/scraping-requests", response_model=ScrapingRequestOut)
+async def create_scraping_request(payload: ScrapingRequestCreate, db: AsyncSession = Depends(get_db)):
+    req = ScrapingRequest(**payload.model_dump())
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+    return req
+
+
+@router.patch("/scraping-requests/{request_id}", response_model=ScrapingRequestOut)
+async def update_scraping_request(
+    request_id: int,
+    payload: ScrapingRequestUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(ScrapingRequest).where(ScrapingRequest.id == request_id))
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Scraping request not found")
+
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(req, key, value)
+
+    await db.commit()
+    await db.refresh(req)
+    return req

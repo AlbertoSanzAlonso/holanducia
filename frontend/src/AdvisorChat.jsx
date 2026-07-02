@@ -3,7 +3,7 @@ import { MessageSquare, Send, X, Bot, User, Trash2, Loader2 } from 'lucide-react
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'https://esm.sh/react-markdown@9.0.1'
 
-export default function AdvisorChat({ insforge }) {
+export default function AdvisorChat() {
   const [isOpen, setIsOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [chatHistory, setChatHistory] = useState([
@@ -27,6 +27,13 @@ export default function AdvisorChat({ insforge }) {
     setChatHistory(prev => [...prev, userMessage])
     setMessage('')
     setIsTyping(true)
+
+    setChatHistory(prev => [...prev, {
+      role: 'assistant',
+      content: 'El chat asesor estará disponible pronto en la API local. Por ahora usa el dashboard para gestionar oportunidades.'
+    }])
+    setIsTyping(false)
+    return
 
     try {
       // Fix: Resolve functions URL correctly (stripping regional subdomains like .eu-central)

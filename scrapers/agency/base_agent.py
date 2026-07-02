@@ -3,7 +3,7 @@ import sys
 import os
 from typing import Optional
 
-from shared.insforge_connector import InsForgeConnector
+from shared.db_connector import DatabaseConnector
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -13,9 +13,8 @@ class BaseAgent:
     def __init__(self, name: str):
         self.name = name
         self.logger = logging.getLogger(f"Agency.{name}")
-        self.connector = InsForgeConnector(
-            oss_host=os.getenv("INSFORGE_OSS_HOST", "https://s7pytj95.eu-central.insforge.app"),
-            api_key=os.getenv("INSFORGE_API_KEY", "ik_0ed6e333e7a2e51c6c94939d8d8afbcf")
+        self.connector = DatabaseConnector(
+            api_url=os.getenv("API_URL", "http://localhost:9000")
         )
         self.firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
         self.firecrawl_base = "https://api.firecrawl.dev/v1"

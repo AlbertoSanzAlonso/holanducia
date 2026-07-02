@@ -1,82 +1,67 @@
 import asyncio
 import logging
-import httpx
-import sys
 import os
+import sys
+from datetime import datetime, timezone
 
-# Ensure shared directory is in path for imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from insforge_connector import InsForgeConnector
+import httpx
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from agency.director import DirectorAgent
 
 logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("HolanducIA_Worker")
 
-async def main():
-    # Cargamos desde variables de entorno
-    oss_host = os.getenv("INSFORGE_URL") or os.getenv("INSFORGE_OSS_HOST")
-    api_key = os.getenv("INSFORGE_ANON_KEY") or os.getenv("INSFORGE_API_KEY")
-    
-    if not api_key or not oss_host:
-        logger.error("❌ Error: faltan INSFORGE_OSS_HOST/INSFORGE_URL o INSFORGE_API_KEY/INSFORGE_ANON_KEY en el entorno.")
-        return
 
-    connector = InsForgeConnector(oss_host=oss_host, api_key=api_key)
-    director = DirectorAgent()
-    
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    logger.info(f"🏢 HolanducIA Worker iniciado. Conectado a: {oss_host}")
-    
-    async with httpx.AsyncClient() as client:
+async def main():
+    api_url = os.getenv("API_URL", "http://api:8000").rstrip("/")
+    director = DirectorAgent(api_url=api_url)
+
+    logger.info("HolanducIA Worker iniciado. API: %s", api_url)
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
         while True:
             try:
-                # Buscamos una petición pendiente
-                url = f"{oss_host}/api/database/records/scraping_requests?status=eq.pending&limit=1"
-                response = await client.get(url, headers=headers)
-                
-                if response.status_code == 200:
-                    requests = response.json()
-                    if requests:
-                        request = requests[0]
-                        request_id = request['id']
-                        logger.info(f"🚀 Misión Recibida: {request_id}")
-                        
-                        # Marcamos como procesando para que otros workers no la cojan
-                        update_url = f"{oss_host}/api/database/records/scraping_requests?id=eq.{request_id}"
-                        await client.patch(update_url, json={"status": "processing"}, headers=headers)
-                        
-                        # Ejecutamos la lógica de rascado (si hay URL, es una tarea específica)
-                        await director.execute_mission(request=request)
-                        
-                        # Marcamos como completada
-                        await client.patch(update_url, json={
-                            "status": "completed", 
-                            "processed_at": "now()"
-                        }, headers={**headers, "Prefer": "return=minimal"})
-                        
-                        logger.info(f"🏁 Misión cumplida con éxito: {request_id}")
-                    else:
-                        # No hay tareas, esperamos un poco
-                        pass
-                else:
-                    logger.error(f"Error de conexión con InsForge: {response.status_code}")
-                
+                response = await client.get(f"{api_url}/api/scraping-requests/pending")
+                if response.status_code != 200:
+                    logger.error("Error consultando misiones: %s", response.status_code)
+                    await asyncio.sleep(5)
+                    continue
+
+                request = response.json()
+                if not request:
+                    await asyncio.sleep(5)
+                    continue
+
+                request_id = request["id"]
+                logger.info("Mision recibida: %s", request_id)
+
+                await client.patch(
+                    f"{api_url}/api/scraping-requests/{request_id}",
+                    json={"status": "processing"},
+                )
+
+                await director.execute_mission(request=request)
+
+                await client.patch(
+                    f"{api_url}/api/scraping-requests/{request_id}",
+                    json={
+                        "status": "completed",
+                        "processed_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                logger.info("Mision cumplida: %s", request_id)
             except Exception as e:
-                logger.error(f"Error en el bucle del Worker: {e}")
-                
-            # Esperamos 5 segundos antes de la siguiente comprobación
+                logger.error("Error en el bucle del Worker: %s", e)
+
             await asyncio.sleep(5)
+
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("👋 Worker detenido por el usuario.")
-
+        logger.info("Worker detenido por el usuario.")

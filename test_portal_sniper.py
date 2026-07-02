@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 
 from scrapers.crawl4ai_sniper import Crawl4AISniper
-from scrapers.insforge_connector import InsForgeConnector
+from scrapers.db_connector import DatabaseConnector
 
 DEFAULT_PORTALS = {
     "malaga": [
@@ -17,7 +17,7 @@ DEFAULT_PORTALS = {
 
 
 async def resolve_portal_urls() -> list[str]:
-    connector = InsForgeConnector()
+    connector = DatabaseConnector()
     settings = await connector.get_settings()
     portal_urls = (settings or {}).get("portal_urls") or []
 

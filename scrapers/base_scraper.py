@@ -7,7 +7,7 @@ import os
 import sys
 import redis
 
-from insforge_connector import InsForgeConnector
+from insforge_connector import DatabaseConnector
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -46,9 +46,8 @@ class BaseScraper(ABC):
         self.firecrawl_base = "https://api.firecrawl.dev/v1"
         
         # InsForge Connector
-        self.connector = InsForgeConnector(
-            oss_host=os.getenv("INSFORGE_URL") or os.getenv("INSFORGE_OSS_HOST"),
-            api_key=os.getenv("INSFORGE_ANON_KEY") or os.getenv("INSFORGE_API_KEY")
+        self.connector = DatabaseConnector(
+            api_url=os.getenv("API_URL", "http://localhost:9000")
         )
 
         # Redis Deduplication Layer

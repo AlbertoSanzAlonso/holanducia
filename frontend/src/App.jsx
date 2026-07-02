@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createClient } from '@insforge/sdk'
+import { api } from './api'
 import { 
   Search, MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
   Eye, Mail, MoreHorizontal, ChevronRight, ChevronLeft, Menu, X,
@@ -10,11 +10,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import PropertyIntelligenceModal from './PropertyIntelligenceModal'
 import AdvisorChat from './AdvisorChat'
 import SettingsView from './SettingsView'
-
-const insforge = createClient({
-  baseUrl: import.meta.env.VITE_INSFORGE_URL,
-  anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY
-})
 
 function App() {
   const [properties, setProperties] = useState([])
@@ -34,12 +29,12 @@ function App() {
   const fetchData = async () => {
     setLoading(true)
     try {
-        const [propsRes, catsRes] = await Promise.all([
-        insforge.database.from('properties').select('*').order('created_at', { ascending: false }),
-        insforge.database.from('categories').select('*').order('name', { ascending: true })
+        const [propsData, catsData] = await Promise.all([
+          api.getProperties(),
+          api.getCategories(),
         ])
-        if (propsRes.data) setProperties(propsRes.data)
-        if (catsRes.data) setCategories(catsRes.data)
+        setProperties(propsData || [])
+        setCategories(catsData || [])
     } catch (e) {
         setErrorField("Revisa la conexión con el servidor.")
     } finally {
@@ -48,41 +43,39 @@ function App() {
   }
 
   const updateProperty = async (updatedProp) => {
-    const { error } = await insforge.database.from('properties').update(updatedProp).match({ id: updatedProp.id })
-    if (!error) fetchData()
+    const { id, created_at, updated_at, ...data } = updatedProp
+    await api.updateProperty(id, data)
+    fetchData()
   }
 
   const deleteProperty = async (id) => {
-    const { error } = await insforge.database.from('properties').delete().match({ id })
-    if (!error) { 
-        setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; })
-        fetchData() 
-    }
+    await api.deleteProperty(id)
+    setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; })
+    fetchData()
   }
 
   const deleteBatch = async () => {
     if (!window.confirm(`¿Seguro que quieres eliminar ${selectedIds.size} elementos?`)) return
-    await insforge.database.from('properties').delete().in('id', Array.from(selectedIds))
+    await api.deleteProperties(Array.from(selectedIds))
     setSelectedIds(new Set())
     fetchData()
   }
 
   const changeBatchCategory = async (catId) => {
-    await insforge.database.from('properties').update({ category_id: catId }).in('id', Array.from(selectedIds))
+    await api.updatePropertiesCategory(Array.from(selectedIds), catId)
     setSelectedIds(new Set())
     fetchData()
   }
 
   const checkScrapingStatus = async () => {
-    const { data } = await insforge.database
-      .from('scraping_requests')
-      .select('*')
-      .order('requested_at', { ascending: false })
-      .limit(1)
-    
-    if (data?.[0]?.status === 'security_block') {
-      setSecurityBlock(data[0])
-    } else {
+    try {
+      const data = await api.getLatestScrapingRequest()
+      if (data?.status === 'security_block') {
+        setSecurityBlock(data)
+      } else {
+        setSecurityBlock(null)
+      }
+    } catch {
       setSecurityBlock(null)
     }
   }
@@ -303,7 +296,7 @@ function App() {
              )}
           </section>
         ) : (
-          <SettingsView insforge={insforge} />
+          <SettingsView />
         )}
 
         {/* Floating Bulk Actions Bar Premium */}
@@ -346,7 +339,7 @@ function App() {
           )}
         </AnimatePresence>
       </main>
-      <AdvisorChat insforge={insforge} />
+      <AdvisorChat />
     </div>
   )
 }
