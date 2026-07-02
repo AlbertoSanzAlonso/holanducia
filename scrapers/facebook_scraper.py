@@ -154,6 +154,7 @@ class FacebookScraper(BaseScraper):
                             continue
                         
                         # Inyección en DB
+                        ai_data["external_id"] = f_hash
                         ai_data["url"] = f"{group_url}?post_id={f_hash}"
                         success = await self.connector.upsert_property(ai_data)
                         

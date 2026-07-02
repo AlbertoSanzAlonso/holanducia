@@ -10,8 +10,20 @@ logger = logging.getLogger(__name__)
 
 class AnalystAgent:
     def __init__(self):
+        self.groq_key = os.environ.get("GROQ_API_KEY")
         self.openai_key = os.environ.get("OPENAI_API_KEY")
-        self.openai_url = "https://api.openai.com/v1/chat/completions"
+        if self.groq_key:
+            self.llm_url = "https://api.groq.com/openai/v1/chat/completions"
+            self.llm_key = self.groq_key
+            self.llm_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+        elif self.openai_key:
+            self.llm_url = "https://api.openai.com/v1/chat/completions"
+            self.llm_key = self.openai_key
+            self.llm_model = "gpt-4o-mini"
+        else:
+            self.llm_url = None
+            self.llm_key = None
+            self.llm_model = None
 
     async def parse_raw_text(self, raw_content: str, source: str = "Facebook") -> Optional[Dict[str, Any]]:
         """Analiza un anuncio individual y extrae datos estructurados"""
@@ -59,16 +71,21 @@ class AnalystAgent:
         return result if isinstance(result, list) else []
 
     async def _call_ai(self, prompt: str, source: str, is_bulk=False):
-        """Llamada genérica a OpenAI"""
-        headers = {"Authorization": f"Bearer {self.openai_key}", "Content-Type": "application/json"}
+        """Llamada genérica a OpenAI o Groq (compatible OpenAI)."""
+        if not self.llm_key:
+            logger.error("❌ Falta GROQ_API_KEY u OPENAI_API_KEY para el análisis IA.")
+            return [] if is_bulk else None
+
+        headers = {"Authorization": f"Bearer {self.llm_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "gpt-4o-mini",
+            "model": self.llm_model,
             "messages": [{"role": "user", "content": prompt}]
         }
         
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(self.openai_url, json=payload, headers=headers)
+                response = await client.post(self.llm_url, json=payload, headers=headers)
+                response.raise_for_status()
                 content = response.json()['choices'][0]['message']['content']
                 
                 # Limpieza de markdown

@@ -47,8 +47,8 @@ class BaseScraper(ABC):
         
         # InsForge Connector
         self.connector = InsForgeConnector(
-            oss_host=os.getenv("INSFORGE_URL"),
-            api_key=os.getenv("INSFORGE_ANON_KEY")
+            oss_host=os.getenv("INSFORGE_URL") or os.getenv("INSFORGE_OSS_HOST"),
+            api_key=os.getenv("INSFORGE_ANON_KEY") or os.getenv("INSFORGE_API_KEY")
         )
 
         # Redis Deduplication Layer
@@ -85,6 +85,25 @@ class BaseScraper(ABC):
             self.redis.sadd("holanducia:processed_urls", url)
         except Exception as e:
             logger.warning(f"Could not save URL to Redis: {e}")
+
+    async def scrape_with_crawl4ai(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
+        if await self.is_already_scraped(url):
+            logger.info(f"⏭️ Skipping (Already in Redis): {url}")
+            return None
+
+        logger.info(f"🕷️ Crawl4AI Scan: {url}")
+
+        try:
+            from scrapers.crawl4ai_client import Crawl4AIClient
+
+            client = Crawl4AIClient()
+            if schema:
+                return await client.scrape_with_schema(url, schema)
+            markdown = await client.scrape_markdown(url)
+            return {"markdown": markdown} if markdown else None
+        except Exception as e:
+            logger.warning(f"Crawl4AI scan failed for {url}: {e}")
+            return None
 
     async def scrape_with_firecrawl(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         # Check before spending credits!

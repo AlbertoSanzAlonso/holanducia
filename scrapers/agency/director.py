@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import List, Dict, Any
 from scrapers.insforge_connector import InsForgeConnector
 from scrapers.facebook_scraper import FacebookScraper
@@ -54,11 +55,22 @@ class DirectorAgent:
                 scraper = FacebookScraper(fb_groups[0], limit=(quota - total_captured))
                 total_captured += await scraper.scrape_multiple(fb_groups)
 
-            # 2. MOTOR PORTALES (Sniper via Firecrawl)
+            # 2. MOTOR PORTALES (Sniper: Crawl4AI por defecto, Firecrawl opcional)
             if portal_urls and total_captured < quota:
-                logger.info(f"🎯 Activando Modo Francotirador sobre {len(portal_urls)} portales...")
-                from scrapers.firecrawl_sniper import FirecrawlSniper
-                sniper = FirecrawlSniper(limit=(quota - total_captured))
+                backend = os.getenv("SNIPER_BACKEND", "crawl4ai").lower()
+                logger.info(
+                    f"🎯 Activando Modo Francotirador ({backend}) sobre {len(portal_urls)} portales..."
+                )
+
+                if backend == "firecrawl":
+                    from scrapers.firecrawl_sniper import FirecrawlSniper
+
+                    sniper = FirecrawlSniper(limit=(quota - total_captured))
+                else:
+                    from scrapers.crawl4ai_sniper import Crawl4AISniper
+
+                    sniper = Crawl4AISniper(limit=(quota - total_captured))
+
                 total_captured += await sniper.scrape_portals(portal_urls)
             
             if total_captured >= quota: break

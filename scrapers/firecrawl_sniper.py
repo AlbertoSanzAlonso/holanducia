@@ -8,11 +8,14 @@ logger = logging.getLogger(__name__)
 
 class FirecrawlSniper(BaseScraper):
     def __init__(self, limit=50):
-        super().__init__("Firecrawl-Sniper")
+        super().__init__("Firecrawl-Sniper", "portals")
         self.api_key = os.getenv("FIRECRAWL_API_KEY")
         self.api_url = "https://api.firecrawl.dev/v1/scrape"
         self.limit = limit
         self.analyst = AnalystAgent()
+
+    async def scrape(self):
+        return 0
 
     async def scrape_portals(self, urls: list):
         """Ejecuta el modo ahorro sobre una lista de URLs de portales"""
@@ -59,6 +62,12 @@ class FirecrawlSniper(BaseScraper):
                     # 3. INYECCIÓN EN BASE DE DATOS
                     for lead in leads:
                         if total_leads >= self.limit: break
+                        
+                        # Generar identificador único sintético para Sniper (Bulk extraction lacks individual URLs)
+                        import hashlib
+                        f_hash = hashlib.md5(f"{lead['title']}{lead['price']}".encode()).hexdigest()[:12]
+                        lead["external_id"] = f_hash
+                        lead["url"] = f"{url}#sniper-{f_hash}" # Synthetic URL based on portal listing
                         
                         success = await self.connector.upsert_property(lead)
                         if success:

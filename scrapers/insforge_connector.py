@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 class InsForgeConnector:
     def __init__(self, oss_host: str = None, api_key: str = None):
-        self.oss_host = (oss_host or os.getenv("INSFORGE_URL", "")).rstrip('/')
-        self.api_key = api_key or os.getenv("INSFORGE_ANON_KEY", "")
+        self.oss_host = (oss_host or os.getenv("INSFORGE_URL") or os.getenv("INSFORGE_OSS_HOST", "")).rstrip('/')
+        self.api_key = api_key or os.getenv("INSFORGE_ANON_KEY") or os.getenv("INSFORGE_API_KEY", "")
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"

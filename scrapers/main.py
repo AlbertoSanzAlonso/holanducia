@@ -17,11 +17,11 @@ logger = logging.getLogger("HolanducIA_Worker")
 
 async def main():
     # Cargamos desde variables de entorno
-    oss_host = os.getenv("INSFORGE_URL")
-    api_key = os.getenv("INSFORGE_ANON_KEY")
+    oss_host = os.getenv("INSFORGE_URL") or os.getenv("INSFORGE_OSS_HOST")
+    api_key = os.getenv("INSFORGE_ANON_KEY") or os.getenv("INSFORGE_API_KEY")
     
-    if not api_key:
-        logger.error("❌ Error: INSFORGE_ANON_KEY no encontrada. Revisa tu archivo .env")
+    if not api_key or not oss_host:
+        logger.error("❌ Error: faltan INSFORGE_OSS_HOST/INSFORGE_URL o INSFORGE_API_KEY/INSFORGE_ANON_KEY en el entorno.")
         return
 
     connector = InsForgeConnector(oss_host=oss_host, api_key=api_key)
