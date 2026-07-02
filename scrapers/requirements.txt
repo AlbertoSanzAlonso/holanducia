@@ -7,3 +7,5 @@ python-dotenv
 apscheduler
 crawl4ai
 litellm
+langgraph
+langchain-core

@@ -42,6 +42,8 @@ services:
       dockerfile: Dockerfile
     container_name: holanducia_worker
     restart: always
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy

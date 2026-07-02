@@ -1,14 +1,64 @@
-import asyncio
+import logging
 import os
 import re
-import logging
-import hashlib
-import json
+from pathlib import Path
+
 from playwright.async_api import async_playwright
+
+from scrapers.agency.graphs.facebook_graph import run_facebook_pipeline
 from scrapers.base_scraper import BaseScraper
-from scrapers.agency.analyst import AnalystAgent
 
 logger = logging.getLogger(__name__)
+
+DEBUG_DIR = Path(__file__).parent / "debug"
+
+EXTRACT_POSTS_JS = """() => {
+    const posts = [];
+    const selectors = [
+        'div[role="article"]',
+        'article',
+        'div[data-ad-preview="message"]',
+        'div[data-ad-comet-preview="message"]',
+        'div[data-ad-rendering-role="story_message"]',
+        'div[data-sigil="m-feed-voice-subtitle"]',
+        'div[data-sigil="m-feed-voice-internal"]',
+    ];
+    selectors.forEach(sel => {
+        document.querySelectorAll(sel).forEach(el => {
+            const text = (el.innerText || '').trim();
+            if (text.length > 60) posts.push(text);
+        });
+    });
+    const feed = document.querySelector('[role="main"], [role="feed"], #scrollview');
+    if (feed) {
+        feed.querySelectorAll('div[dir="auto"]').forEach(el => {
+            const text = (el.innerText || '').trim();
+            if (text.length > 80) posts.push(text);
+        });
+    }
+    return [...new Set(posts)];
+}"""
+
+SCROLL_JS = """() => {
+    const scrollables = [...document.querySelectorAll('div, main')].filter(el => {
+        const s = getComputedStyle(el);
+        return (s.overflowY === 'auto' || s.overflowY === 'scroll')
+            && el.scrollHeight > el.clientHeight + 50;
+    });
+    const target = scrollables.sort(
+        (a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight)
+    )[0];
+    if (target) {
+        target.scrollTop += 900;
+        return { method: 'container', scroll: target.scrollTop };
+    }
+    window.scrollBy(0, 900);
+    return {
+        method: 'window',
+        scroll: window.pageYOffset || document.documentElement.scrollTop || 0,
+    };
+}"""
+
 
 class FacebookScraper(BaseScraper):
     def __init__(self, group_url, limit=50):
@@ -17,155 +67,192 @@ class FacebookScraper(BaseScraper):
         self.limit = limit
         self.user = os.getenv("FB_USER")
         self.password = os.getenv("FB_PASSWORD")
-        self.analyst = AnalystAgent()
 
     def _format_url(self, url):
         if url.isdigit() or not url.startswith("http"):
-            return f"https://m.facebook.com/groups/{url}"
-        return url.replace("www.facebook.com", "m.facebook.com")
+            return f"https://www.facebook.com/groups/{url}"
+        return url.replace("m.facebook.com", "www.facebook.com")
+
+    async def _persist_lead(self, ai_data: dict, _group_url: str) -> bool:
+        return await self.connector.upsert_property(ai_data)
 
     async def scrape_multiple(self, groups: list):
-        """Recorre una lista de grupos compartiendo la misma sesión de login"""
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            # Gestión de Sesión y LOGIN (Forzando Inglés para estabilidad)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1",
-                locale="en-US"
+                viewport={"width": 1280, "height": 900},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+                ),
+                locale="es-ES",
+            )
+            await context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
             )
             page = await context.new_page()
-            
-            # 1. FASE LOGIN
-            if self.user and self.password:
-                logger.info(f"🔑 [Fase Login] Identificando a {self.user}...")
-                try:
-                    await page.goto("https://m.facebook.com/login", wait_until="networkidle")
-                    
-                    # Llenamos campos (Asegurando que sean los correctos)
-                    await page.wait_for_selector('input[name="email"]', timeout=10000)
-                    await page.fill('input[name="email"]', self.user)
-                    await page.fill('input[name="pass"]', self.password)
-                    
-                    # Buscamos el botón de login real con MIRADA QUIRÚRGICA
-                    # Prioridad 1: Atributo técnico de Facebook. Prioridad 2: Texto claro.
-                    login_selectors = [
-                        '[data-sigil="m_login_button"]',
-                        'button[name="login"]',
-                        'button:has-text("Log In")',
-                        'button:has-text("Entrar")'
-                    ]
-                    
-                    for sel in login_selectors:
-                        try:
-                            # Ignoramos botones de "Cancelar" o "Atrás" que suelen ser clases como 'dialog-cancel-button'
-                            btn = page.locator(sel).filter(has_not_text="Cancel").filter(has_not_text="Back").filter(has_not_text="Atrás")
-                            if await btn.is_visible():
-                                await btn.click(timeout=5000)
-                                break
-                        except: continue
-                    
-                    await page.wait_for_timeout(5000)
-                    logger.info("✅ Login procesado.")
-                except Exception as e:
-                    logger.warning(f"⚠️ Error en login: {e}. Intentando continuar como anónimo...")
 
-            # --- FASE 2: RECORRIDO DE GRUPOS ---
+            if self.user and self.password:
+                await self._login(page)
+
             total_leads = 0
             for group_id in groups:
-                if total_leads >= self.limit: break
-                
-                group_url = self._format_url(group_id)
-                logger.info(f"👥 [Infiltración] Entrando en grupo: {group_url}")
-                
-                await page.goto(group_url, wait_until="domcontentloaded")
-                await page.wait_for_timeout(3000)
-                
-                # Proceso de rascado del grupo
-                unique_posts = set()
-                last_height = 0
-                for scroll in range(40): # Más scrolls para dar tiempo a cargar
-                    if page.is_closed(): break
-                    
-                    # 1. Expandir anuncios (Ver más)
-                    try:
-                        expand_btns = await page.get_by_text(re.compile(r"Ver más|See more", re.IGNORECASE)).all()
-                        for b in expand_btns[:5]:
-                            if await b.is_visible(): await b.click(timeout=300)
-                    except: pass
-                    
-                    # 2. EXTRACCIÓN POR SELECTORES MÚLTIPLES
-                    new_fragments = await page.evaluate("""() => {
-                        const posts = [];
-                        // Intentamos varios selectores conocidos de posts
-                        const elementSelectors = [
-                            'article', 
-                            'div[data-sigil="m-feed-voice-internal"]', 
-                            'div._5r-k', 
-                            'div[role="article"]',
-                            'div.story_body_container'
-                        ];
-                        elementSelectors.forEach(sel => {
-                            document.querySelectorAll(sel).forEach(el => {
-                                if (el.innerText.length > 50) posts.push(el.innerText);
-                            });
-                        });
-                        return [...new Set(posts)]; // Únicos en este frame
-                    }""")
-                    
-                    for frag in new_fragments:
-                        if len(frag.strip()) > 50: unique_posts.add(frag.strip())
-                    
-                    if scroll % 5 == 0:
-                        logger.info(f"🚜 [Paso {scroll}] {len(unique_posts)} fragmentos totales. Scroll: {last_height}px")
-                    
-                    # 3. SCROLL AGRESIVO (window.scrollBy + Click si bloqueado)
-                    new_height = await page.evaluate("""() => {
-                        window.scrollBy(0, 1500);
-                        return window.pageYOffset;
-                    }""")
-                    
-                    if new_height == last_height:
-                        # Si no se mueve, intentamos un click en el centro para "despertar" el foco
-                        await page.mouse.click(200, 400)
-                    last_height = new_height
-                    await page.wait_for_timeout(1500)
+                if total_leads >= self.limit:
+                    break
 
-                # Mandamos los fragmentos a analizar con ESCUDO DE AHORRO
-                valid_candidates = [p for p in unique_posts if any(k in p.lower() for k in [
-                    'piso', 'casa', 'vivienda', 'alquiler', 'vendo', 'venta', 'chalet', 'inmueble', 
-                    'hab', 'dorm', 'baño', 'estudio', 'loft', 'duplex', 'finca', 'apartamento', 
-                    '€', 'euro', 'precio', 'm2', 'particular', 'inmobiliaria', 'comunidad'
-                ])]
-                
-                logger.info(f"📑 Analizando {len(valid_candidates)} de {len(unique_posts)} candidatos con Escudo de Ahorro...")
-                
-                for post_text in valid_candidates:
-                    if total_leads >= self.limit: break
-                    
-                    # Usamos "Facebook" como nombre de fuente limpio
-                    ai_data = await self.analyst.parse_raw_text(post_text, "Facebook")
-                    if ai_data:
-                        # Filtramos campos que NO existen en la DB para evitar Errores 400
-                        ai_data.pop("is_real_estate", None)
-                        
-                        # Generar hash para deduplicación
-                        f_hash = hashlib.md5(f"{ai_data['title']}{ai_data['price']}".encode()).hexdigest()[:12]
-                        if await self.is_already_scraped(f_hash): 
-                            continue
-                        
-                        # Inyección en DB
-                        ai_data["external_id"] = f_hash
-                        ai_data["url"] = f"{group_url}?post_id={f_hash}"
-                        success = await self.connector.upsert_property(ai_data)
-                        
-                        total_leads += 1
-                        await self.mark_as_scraped(f_hash)
-                        logger.info(f"✨ [{total_leads}/{self.limit}] Lead guardado: {ai_data['title']}")
+                group_url = self._format_url(group_id)
+                logger.info("Entrando en grupo: %s", group_url)
+
+                await page.goto(group_url, wait_until="domcontentloaded", timeout=60000)
+                await page.wait_for_timeout(3000)
+                await self._dismiss_cookies(page)
+
+                dom_posts, page_text, scroll_pos = await self._scroll_and_collect(page)
+
+                if not dom_posts:
+                    await self._save_debug_artifacts(page, group_id)
+
+                remaining = self.limit - total_leads
+                result = await run_facebook_pipeline(
+                    group_url=group_url,
+                    page_text=page_text,
+                    dom_posts=dom_posts,
+                    limit=remaining,
+                    persist_lead=self._persist_lead,
+                    is_already_scraped=self.is_already_scraped,
+                    mark_as_scraped=self.mark_as_scraped,
+                )
+
+                saved = result.get("saved_count", 0)
+                method = result.get("extraction_method", "none")
+                total_leads += saved
+
+                if result.get("error"):
+                    logger.warning("Grupo %s: %s", group_url, result["error"])
+                else:
+                    logger.info(
+                        "Grupo %s: %s leads (método=%s, scroll=%spx)",
+                        group_url,
+                        saved,
+                        method,
+                        scroll_pos,
+                    )
 
             await browser.close()
-            logger.info(f"🏁 Scraper finalizado. Total inyectado: {total_leads}")
+            logger.info("Scraper finalizado. Total inyectado: %s", total_leads)
             return total_leads
 
+    async def _login(self, page):
+        logger.info("Fase login: identificando a %s...", self.user)
+        try:
+            await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_selector('input[name="email"]', timeout=15000)
+            await page.fill('input[name="email"]', self.user)
+            await page.fill('input[name="pass"]', self.password)
+
+            for sel in ['button[name="login"]', 'button:has-text("Log In")', 'button:has-text("Iniciar sesión")']:
+                try:
+                    btn = page.locator(sel).first
+                    if await btn.is_visible(timeout=2000):
+                        await btn.click(timeout=5000)
+                        break
+                except Exception:
+                    continue
+
+            await page.wait_for_timeout(6000)
+            await self._dismiss_cookies(page)
+
+            if "login" in page.url.lower():
+                logger.warning("Login posiblemente fallido — sigue en página de login.")
+            else:
+                logger.info("Login procesado correctamente.")
+        except Exception as e:
+            logger.warning("Error en login: %s. Continuando como anónimo...", e)
+
+    async def _dismiss_cookies(self, page):
+        patterns = [
+            r"Allow all cookies",
+            r"Permitir todas las cookies",
+            r"Accept All",
+            r"Aceptar todo",
+            r"Allow essential and optional cookies",
+        ]
+        for pattern in patterns:
+            try:
+                btn = page.get_by_role("button", name=re.compile(pattern, re.IGNORECASE))
+                if await btn.first.is_visible(timeout=1500):
+                    await btn.first.click(timeout=3000)
+                    await page.wait_for_timeout(1000)
+                    return
+            except Exception:
+                continue
+
+    async def _scroll_and_collect(self, page):
+        unique_posts = set()
+        last_scroll = 0
+        stagnant = 0
+
+        for step in range(35):
+            if page.is_closed():
+                break
+
+            try:
+                expand_btns = await page.get_by_text(
+                    re.compile(r"Ver más|See more", re.IGNORECASE)
+                ).all()
+                for btn in expand_btns[:5]:
+                    if await btn.is_visible():
+                        await btn.click(timeout=300)
+            except Exception:
+                pass
+
+            fragments = await page.evaluate(EXTRACT_POSTS_JS)
+            for frag in fragments:
+                if len(frag.strip()) > 50:
+                    unique_posts.add(frag.strip())
+
+            scroll_info = await page.evaluate(SCROLL_JS)
+            current_scroll = scroll_info.get("scroll", 0)
+
+            if step % 5 == 0:
+                logger.info(
+                    "Scroll paso %s: %s fragmentos, pos=%spx (%s)",
+                    step,
+                    len(unique_posts),
+                    current_scroll,
+                    scroll_info.get("method", "?"),
+                )
+
+            if current_scroll == last_scroll:
+                stagnant += 1
+                if stagnant >= 3:
+                    await page.keyboard.press("PageDown")
+                    stagnant = 0
+            else:
+                stagnant = 0
+
+            last_scroll = current_scroll
+            await page.wait_for_timeout(1200)
+
+        page_text = await page.evaluate("() => document.body.innerText || ''")
+        return list(unique_posts), page_text, last_scroll
+
+    async def _save_debug_artifacts(self, page, group_id):
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+        safe_id = re.sub(r"[^\w-]", "_", str(group_id))[:40]
+        screenshot_path = DEBUG_DIR / f"fb_{safe_id}.png"
+        html_path = DEBUG_DIR / f"fb_{safe_id}.html"
+
+        try:
+            await page.screenshot(path=str(screenshot_path), full_page=False)
+            html = await page.content()
+            html_path.write_text(html[:50000], encoding="utf-8")
+            logger.info("Debug guardado: %s, %s", screenshot_path.name, html_path.name)
+        except Exception as e:
+            logger.warning("No se pudo guardar debug: %s", e)
+
     async def scrape(self):
-        # Mantenemos compatibilidad por si se llama individualmente
         return await self.scrape_multiple([self.group_url])
