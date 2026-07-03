@@ -47,6 +47,7 @@ class AnalystAgent:
             "city": "ciudad",
             "description": "resumen breve",
             "rooms": número,
+            "images": ["url_foto1", "url_foto2"],
             "is_real_estate": true/false
         }}
 
@@ -55,20 +56,34 @@ class AnalystAgent:
         
         return await self._call_ai(prompt, source)
 
-    async def parse_bulk_text(self, raw_text: str, source: str) -> List[Dict[str, Any]]:
+    async def parse_bulk_text(
+        self,
+        raw_text: str,
+        source: str,
+        page_images: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """Analiza un listado masivo (Modo Sniper)"""
+        from scrapers.image_utils import assign_images_to_leads
+
         logger.info(f"🧠 AI Bulk Extraction: Procesando listado masivo de {source}...")
-        
+
+        image_hint = ""
+        if page_images:
+            image_hint = f"\nURLs de fotos detectadas en la página (asigna la que corresponda a cada anuncio): {page_images[:40]}"
+
         prompt = f"""
         Analiza este listado de {source} y extrae TODAS las propiedades.
-        Devuelve un array JSON de objetos con: title, price, city, description, rooms.
-        Si el título falta, créalo tú. Si el precio falta, pon 0.
+        Devuelve un array JSON de objetos con: title, price, city, description, rooms, images (array de URLs de foto).
+        Si el título falta, créalo tú. Si el precio falta, pon 0. Si no hay foto clara, usa [].
+        {image_hint}
 
         Texto: {raw_text[:12000]}
         """
-        
+
         result = await self._call_ai(prompt, source, is_bulk=True)
-        return result if isinstance(result, list) else []
+        leads = result if isinstance(result, list) else []
+        assign_images_to_leads(leads, page_images or [])
+        return leads
 
     async def _call_ai(self, prompt: str, source: str, is_bulk=False):
         """Llamada genérica a OpenAI o Groq (compatible OpenAI)."""
@@ -102,6 +117,8 @@ class AnalystAgent:
                     if not data.get("title") or data["title"] == "None":
                         data["title"] = f"Propiedad en {data.get('city', 'Málaga')}"
                     data["price"] = self._clean_price(data.get("price"))
+                    if not isinstance(data.get("images"), list):
+                        data["images"] = []
                     data["source"] = source
                     return data
                 else:
@@ -110,6 +127,8 @@ class AnalystAgent:
                     for l in leads:
                         l["source"] = source
                         l["price"] = self._clean_price(l.get("price"))
+                        if not isinstance(l.get("images"), list):
+                            l["images"] = []
                     return leads
         except Exception as e:
             logger.error(f"❌ Error en llamada AI: {e}")

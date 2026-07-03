@@ -98,8 +98,7 @@ class BaseScraper(ABC):
             client = Crawl4AIClient()
             if schema:
                 return await client.scrape_with_schema(url, schema)
-            markdown = await client.scrape_markdown(url)
-            return {"markdown": markdown} if markdown else None
+            return await client.scrape_page(url)
         except Exception as e:
             logger.warning(f"Crawl4AI scan failed for {url}: {e}")
             return None

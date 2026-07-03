@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig, LLMConfig, LLMExtractionStrategy
 
+from scrapers.image_utils import extract_image_urls
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,6 +17,10 @@ class Crawl4AIClient:
         self.browser_config = BrowserConfig(headless=True, verbose=False)
 
     async def scrape_markdown(self, url: str) -> Optional[str]:
+        page = await self.scrape_page(url)
+        return page.get("markdown") if page else None
+
+    async def scrape_page(self, url: str) -> Optional[Dict[str, Any]]:
         run_config = CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
             word_count_threshold=10,
@@ -26,7 +32,14 @@ class Crawl4AIClient:
             if not result.success:
                 logger.warning("Crawl4AI failed for %s: %s", url, result.error_message)
                 return None
-            return result.markdown or result.cleaned_html
+
+            markdown = result.markdown or ""
+            html = result.cleaned_html or getattr(result, "html", "") or ""
+            media = getattr(result, "media", None) or {}
+            media_images = media.get("images") if isinstance(media, dict) else media
+
+            images = extract_image_urls(html=html, markdown=markdown, media_images=media_images)
+            return {"markdown": markdown, "html": html, "images": images}
 
     async def scrape_with_schema(
         self,

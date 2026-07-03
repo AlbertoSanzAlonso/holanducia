@@ -6,6 +6,7 @@ import httpx
 from scrapers.agency.analyst import AnalystAgent
 from scrapers.agency.graphs.property_pipeline import run_structured_leads_pipeline
 from scrapers.base_scraper import BaseScraper
+from scrapers.image_utils import extract_image_urls, is_portal_index_url
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,21 @@ class FirecrawlSniper(BaseScraper):
                         continue
 
                     source_name = url.split("//")[-1].split("/")[0].replace("www.", "")
-                    bulk_leads = await self.analyst.parse_bulk_text(markdown_content, source_name)
+                    page_images = extract_image_urls(markdown=markdown_content)
+
+                    if is_portal_index_url(url):
+                        bulk_leads = await self.analyst.parse_bulk_text(
+                            markdown_content,
+                            source_name,
+                            page_images=page_images,
+                        )
+                    else:
+                        lead = await self.analyst.parse_raw_text(markdown_content, source_name)
+                        bulk_leads = []
+                        if lead:
+                            if page_images and not lead.get("images"):
+                                lead["images"] = page_images[:5]
+                            bulk_leads = [lead]
 
                     remaining = self.limit - total_leads
                     result = await run_structured_leads_pipeline(

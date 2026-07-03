@@ -246,7 +246,17 @@ function App() {
                         className={`group relative flex flex-col cursor-pointer ${selectedIds.has(prop.id) ? 'scale-[0.98]' : ''}`}
                     >
                         <div className={`relative aspect-[4/3] rounded-[2.5rem] overflow-hidden bg-slate-100 shadow-lg mb-6 border-4 transition-all ${selectedIds.has(prop.id) ? 'border-[#00acee]' : 'border-transparent'}`}>
-                          <img src={prop.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000' } className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" />
+                          <img
+                            src={prop.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000'}
+                            alt={prop.title || 'Propiedad'}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
+                            onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000' }}
+                          />
+                          {!prop.images?.[0] && (
+                            <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+                              Sin foto
+                            </div>
+                          )}
                           <div className="absolute inset-0 bg-[#0f172a]/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center backdrop-blur-sm">
                              <div className="w-16 h-16 bg-white text-[#0f172a] rounded-full flex items-center justify-center shadow-2xl scale-75 group-hover:scale-100 transition-transform">
                                 <Eye size={32} />
