@@ -11,6 +11,7 @@ from scrapers.base_scraper import BaseScraper
 logger = logging.getLogger(__name__)
 
 DEBUG_DIR = Path(__file__).parent / "debug"
+SESSION_FILE = DEBUG_DIR / "fb_session.json"
 
 EXTRACT_POSTS_JS = """() => {
     const posts = [];
@@ -68,6 +69,13 @@ class FacebookScraper(BaseScraper):
         self.user = os.getenv("FB_USER")
         self.password = os.getenv("FB_PASSWORD")
 
+    @staticmethod
+    def _mask_email(email: str) -> str:
+        if not email or "@" not in email:
+            return "(no configurado)"
+        name, domain = email.split("@", 1)
+        return f"{name[:3]}***@{domain}"
+
     def _format_url(self, url):
         if url.isdigit() or not url.startswith("http"):
             return f"https://www.facebook.com/groups/{url}"
@@ -77,11 +85,21 @@ class FacebookScraper(BaseScraper):
         return await self.connector.upsert_property(ai_data)
 
     async def scrape_multiple(self, groups: list):
+        logger.info(
+            "Facebook scraper — FB_USER=%s, FB_PASSWORD=%s",
+            self._mask_email(self.user or ""),
+            "set" if self.password else "missing",
+        )
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
                 args=["--disable-blink-features=AutomationControlled"],
             )
+            storage_state = str(SESSION_FILE) if SESSION_FILE.exists() else None
+            if storage_state:
+                logger.info("Restaurando sesión FB desde %s", SESSION_FILE.name)
+
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
                 user_agent=(
@@ -89,6 +107,7 @@ class FacebookScraper(BaseScraper):
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
                 ),
                 locale="es-ES",
+                storage_state=storage_state,
             )
             await context.add_init_script(
                 "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
@@ -96,11 +115,17 @@ class FacebookScraper(BaseScraper):
             page = await context.new_page()
 
             if self.user and self.password:
-                await self._login(page)
+                logged_in = await self._session_is_valid(page) if storage_state else False
+                if not logged_in:
+                    logged_in = await self._login(page, context)
+                if not logged_in:
+                    logger.warning(
+                        "Login Facebook no confirmado — los grupos pueden seguir en login_required."
+                    )
             else:
                 logger.warning(
-                    "FB_USER/FB_PASSWORD no configurados en el worker — "
-                    "Facebook mostrará login_required y no se extraerán posts."
+                    "FB_USER/FB_PASSWORD no visibles en el worker — "
+                    "revisa env vars en Coolify y redeploy del contenedor worker."
                 )
 
             total_leads = 0
@@ -165,10 +190,26 @@ class FacebookScraper(BaseScraper):
             logger.info("Scraper finalizado. Total inyectado: %s", total_leads)
             return total_leads
 
-    async def _login(self, page):
-        logger.info("Fase login: identificando a %s...", self.user)
+    async def _session_is_valid(self, page) -> bool:
+        try:
+            await page.goto("https://www.facebook.com/", wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(2500)
+            await self._dismiss_cookies(page)
+            url = page.url.lower()
+            if any(token in url for token in ("login", "checkpoint", "two_step")):
+                return False
+            logger.info("Sesión Facebook activa (cookies previas).")
+            return True
+        except Exception as e:
+            logger.warning("No se pudo validar sesión FB: %s", e)
+            return False
+
+    async def _login(self, page, context) -> bool:
+        logger.info("Fase login: identificando a %s...", self._mask_email(self.user or ""))
         try:
             await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(1500)
+            await self._dismiss_cookies(page)
             await page.wait_for_selector('input[name="email"]', timeout=15000)
             await page.fill('input[name="email"]', self.user)
             await page.fill('input[name="pass"]', self.password)
@@ -182,15 +223,28 @@ class FacebookScraper(BaseScraper):
                 except Exception:
                     continue
 
-            await page.wait_for_timeout(6000)
+            await page.wait_for_timeout(8000)
             await self._dismiss_cookies(page)
 
-            if "login" in page.url.lower():
-                logger.warning("Login posiblemente fallido — sigue en página de login.")
-            else:
-                logger.info("Login procesado correctamente.")
+            url = page.url.lower()
+            if "checkpoint" in url or "two_step" in url:
+                logger.warning(
+                    "Facebook pide verificación extra (checkpoint/2FA): %s — "
+                    "inicia sesión manualmente una vez o desactiva 2FA para esta cuenta bot.",
+                    page.url,
+                )
+                return False
+            if "login" in url:
+                logger.warning("Login fallido — sigue en página de login: %s", page.url)
+                return False
+
+            DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+            await context.storage_state(path=str(SESSION_FILE))
+            logger.info("Login OK — sesión guardada en %s", SESSION_FILE.name)
+            return True
         except Exception as e:
-            logger.warning("Error en login: %s. Continuando como anónimo...", e)
+            logger.warning("Error en login: %s", e)
+            return False
 
     async def _dismiss_cookies(self, page):
         patterns = [

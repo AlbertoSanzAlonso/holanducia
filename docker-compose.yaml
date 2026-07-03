@@ -77,6 +77,8 @@ services:
       SNIPER_BACKEND: crawl4ai
       PYTHONPATH: /app:/app/scrapers
     command: ["python", "scrapers/main.py"]
+    volumes:
+      - fb_session:/app/scrapers/debug
 
   redis:
     image: redis:alpine
@@ -87,6 +89,7 @@ services:
 
 volumes:
   postgres_data:
+  fb_session:
 
 networks:
   default:
