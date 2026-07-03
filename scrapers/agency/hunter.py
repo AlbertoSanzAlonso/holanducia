@@ -3,6 +3,7 @@ from typing import List
 from playwright.async_api import async_playwright
 import random
 import asyncio
+import re
 
 class HunterAgent(BaseAgent):
     def __init__(self):
@@ -75,12 +76,16 @@ class HunterAgent(BaseAgent):
                     clean_u = full_url.split("?")[0].split("#")[0].rstrip("/")
                     
                     # More generous filtering for listing pages
-                    listing_patterns = ["/vivienda/", "/inmueble/", "/anuncio/", "/piso/", "/comprar/", "/venta/"]
+                    listing_patterns = ["/comprar/", "/vivienda/", "/inmueble/", "/anuncio/", "/piso/", "/chalet", "/venta/piso", "/venta/chalet", "/venta/atico"]
                     is_listing = any(x in clean_u for x in listing_patterns)
                     is_main_portal = any(p.lower() in clean_u.lower() for p in ["fotocasa", "habitaclia", "pisos"])
                     
-                    # Avoid list pages (usually end in / or /l or /listado)
-                    is_not_list = not clean_u.endswith("/l") and not clean_u.endswith("/listado.htm") and not clean_u.endswith("/listado")
+                    is_not_list = (
+                        not clean_u.endswith("/l")
+                        and not clean_u.endswith("/listado.htm")
+                        and not clean_u.endswith("/listado")
+                        and not re.search(r"/venta/pisos-[^/]+$", clean_u.lower())
+                    )
                     
                     if is_listing and is_main_portal and is_not_list:
                         valid_urls.append(clean_u)

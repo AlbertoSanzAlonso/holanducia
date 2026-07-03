@@ -5,6 +5,7 @@ from langgraph.graph import END, START, StateGraph
 
 from scrapers.agency.analyst import AnalystAgent
 from scrapers.agency.curator import CuratorAgent, make_lead_dedup_key
+from scrapers.portal_utils import resolve_lead_identity
 from scrapers.agency.types import CurateAction, PropertyPipelineState, RawLead
 from scrapers.db_connector import DatabaseConnector
 
@@ -71,8 +72,8 @@ def build_property_pipeline(
                 break
 
             dedup_key = make_lead_dedup_key(ai_data.get("title", ""), ai_data.get("price", 0))
-            url = f"{base_url}#lead-{dedup_key}"
-            ai_data["external_id"] = dedup_key
+            url, external_id = resolve_lead_identity(ai_data, base_url)
+            ai_data["external_id"] = external_id
             ai_data["url"] = url
 
             decision = await curator.evaluate_lead(ai_data, url=url, dedup_key=dedup_key)
@@ -83,7 +84,7 @@ def build_property_pipeline(
 
             if await persist_lead(ai_data, base_url):
                 saved += 1
-                await mark_as_scraped(dedup_key)
+                await mark_as_scraped(url)
                 raw_key = ai_data.pop("_raw_dedup_key", None)
                 if raw_key:
                     await mark_as_scraped(raw_key)
@@ -160,9 +161,9 @@ async def run_structured_leads_pipeline(
             break
 
         dedup_key = make_lead_dedup_key(lead.get("title", ""), lead.get("price", 0))
-        url = f"{base_url}#lead-{dedup_key}"
+        url, external_id = resolve_lead_identity(lead, base_url)
         lead = dict(lead)
-        lead["external_id"] = dedup_key
+        lead["external_id"] = external_id
         lead["url"] = url
         lead["source"] = source
 
@@ -173,7 +174,7 @@ async def run_structured_leads_pipeline(
 
         if await persist_lead(lead, base_url):
             saved += 1
-            await mark_as_scraped(dedup_key)
+            await mark_as_scraped(url)
 
     stats: Dict[str, Any] = {
         "raw_in": len(leads),

@@ -5,6 +5,7 @@ from scrapers.agency.analyst import AnalystAgent
 from scrapers.agency.graphs.property_pipeline import run_structured_leads_pipeline
 from scrapers.base_scraper import BaseScraper
 from scrapers.image_utils import is_portal_index_url
+from scrapers.portal_utils import assign_listing_urls_to_leads, extract_listing_urls
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class Crawl4AISniper(BaseScraper):
                 data = await self.scrape_with_crawl4ai(url)
                 markdown_content = (data or {}).get("markdown", "")
                 page_images = (data or {}).get("images", [])
+                page_html = (data or {}).get("html", "")
 
                 if not markdown_content:
                     logger.warning("Crawl4AI devolvió contenido vacío.")
@@ -49,10 +51,14 @@ class Crawl4AISniper(BaseScraper):
                         source_name,
                         page_images=page_images,
                     )
+                    listing_urls = extract_listing_urls(page_html, markdown_content, url)
+                    assign_listing_urls_to_leads(bulk_leads, listing_urls)
+                    logger.info("Enlaces de fichas detectados: %s", len(listing_urls))
                 else:
                     lead = await self.analyst.parse_raw_text(markdown_content, source_name)
                     bulk_leads = []
                     if lead:
+                        lead["url"] = url.rstrip("/")
                         if page_images and not lead.get("images"):
                             lead["images"] = page_images[:5]
                         bulk_leads = [lead]

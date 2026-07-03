@@ -13,6 +13,11 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
 
   if (!property) return null;
 
+  const listingUrl =
+    property.url?.startsWith('http') && !property.url.includes('#lead-')
+      ? property.url
+      : null;
+
   const hasDiscrepancy = property.opportunity_reasons?.some(r => r.includes("Discrepancia"));
   const catastroVerified = !!property.catastro_ref;
 
@@ -277,12 +282,20 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
           
           {/* Actions */}
           <div className="flex flex-col sm:flex-row items-center gap-4 mt-auto pt-6 border-t border-slate-100">
-             <a 
-              href={property.url} target="_blank" rel="noreferrer"
-              className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-xl"
-             >
-               Ver anuncio original <ExternalLink size={14} />
-             </a>
+             {listingUrl ? (
+               <a
+                 href={listingUrl}
+                 target="_blank"
+                 rel="noreferrer"
+                 className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-xl"
+               >
+                 Ver anuncio original <ExternalLink size={14} />
+               </a>
+             ) : (
+               <p className="w-full text-center text-xs font-bold uppercase tracking-widest text-slate-400 py-5">
+                 Enlace al anuncio no disponible — vuelve a scrapear
+               </p>
+             )}
              {isEditing && (
                  <button onClick={() => { setProperty(initialProperty); setIsEditing(false); }} className="w-full bg-slate-100 text-slate-500 py-5 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2">
                    <RotateCcw size={14} /> Cancelar cambios

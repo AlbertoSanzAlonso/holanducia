@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from scrapers.agency.hunter import HunterAgent
 from scrapers.db_connector import DatabaseConnector, build_portal_urls
 from scrapers.facebook_scraper import FacebookScraper
+from scrapers.portal_utils import prioritize_portal_urls
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,8 @@ class DirectorAgent:
         if discovered:
             portal_urls = list(dict.fromkeys(portal_urls + discovered))
             logger.info("Director: %s urls de portales (listados + Hunter)", len(portal_urls))
+
+        portal_urls = prioritize_portal_urls(portal_urls)
 
         logger.info(
             "Iniciando mision. Objetivo: %s leads. Fuentes: %s grupos FB, %s portales Sniper.",

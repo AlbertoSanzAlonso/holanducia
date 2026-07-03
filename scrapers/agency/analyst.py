@@ -73,7 +73,7 @@ class AnalystAgent:
 
         prompt = f"""
         Analiza este listado de {source} y extrae TODAS las propiedades.
-        Devuelve un array JSON de objetos con: title, price, city, description, rooms, images (array de URLs de foto).
+        Devuelve un array JSON de objetos con: title, price, city, description, rooms, url (enlace directo al anuncio si aparece), images (array de URLs de foto).
         Si el título falta, créalo tú. Si el precio falta, pon 0. Si no hay foto clara, usa [].
         {image_hint}
 
