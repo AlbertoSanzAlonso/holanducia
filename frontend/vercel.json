@@ -3,6 +3,14 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "http://46.225.18.159:9000/api/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "http://46.225.18.159:9000/health"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -37,7 +37,7 @@ function App() {
         setProperties(Array.isArray(propsData) ? propsData : [])
         setCategories(Array.isArray(catsData) ? catsData : [])
     } catch (e) {
-        setErrorField(`No se pudo conectar con la API (${API_URL || 'VITE_API_URL no configurada'}). En Vercel, define VITE_API_URL con la URL pública del VPS y redeploy.`)
+        setErrorField(`No se pudo conectar con la API (${API_URL || 'proxy /api en Vercel'}). Si usas HTTP en el VPS, deja VITE_API_URL vacía y redeploy.`)
         console.error('fetchData:', e)
     } finally {
         setLoading(false)

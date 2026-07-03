@@ -1,5 +1,6 @@
-// API del VPS. En Vercel: VITE_API_URL=https://tu-api:9000 (ver frontend/.env.example)
-// En dev local: vacío → proxy Vite a localhost:9000
+// Vercel (HTTPS): dejar vacío → vercel.json reescribe /api al VPS (evita Mixed Content).
+// Con API en HTTPS propio: VITE_API_URL=https://api.tu-dominio.com
+// Dev local: vacío → proxy Vite a localhost:9000
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 async function request(path, options = {}) {

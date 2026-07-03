@@ -4,13 +4,14 @@ Dashboard React desplegado en **Vercel**. La API vive en el **VPS** (FastAPI pue
 
 ## Variables de entorno (Vercel)
 
-| Variable | Ejemplo | Obligatorio |
-|----------|---------|-------------|
-| `VITE_API_URL` | `https://api.holanducia.com` o `http://IP-VPS:9000` | **Sí** |
+| Escenario | `VITE_API_URL` |
+|-----------|----------------|
+| API en VPS solo HTTP (`http://IP:9000`) | **No definir** (vacía). `vercel.json` hace proxy `/api` → VPS. |
+| API con HTTPS (`https://api.tu-dominio.com`) | `https://api.tu-dominio.com` |
 
-Configúrala en Vercel → Project → Settings → Environment Variables (Production y Preview).
+**No uses** `http://IP:9000` como `VITE_API_URL` en Vercel: el navegador bloquea Mixed Content (HTTPS → HTTP).
 
-Después de cambiarla, **Redeploy** el proyecto.
+Tras cambiar variables o `vercel.json`, **Redeploy**.
 
 ## Desarrollo local
 
