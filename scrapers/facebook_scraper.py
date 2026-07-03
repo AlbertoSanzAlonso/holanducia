@@ -97,6 +97,11 @@ class FacebookScraper(BaseScraper):
 
             if self.user and self.password:
                 await self._login(page)
+            else:
+                logger.warning(
+                    "FB_USER/FB_PASSWORD no configurados en el worker — "
+                    "Facebook mostrará login_required y no se extraerán posts."
+                )
 
             total_leads = 0
             for group_id in groups:
