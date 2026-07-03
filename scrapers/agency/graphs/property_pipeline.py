@@ -9,6 +9,7 @@ from scrapers.agency.fb_classifier import FacebookClassifierAgent
 from scrapers.agency.persist import persist_supervised_leads
 from scrapers.agency.supervisor import SupervisorAgent
 from scrapers.fb_utils import enrich_lead_from_raw, is_quality_facebook_lead, is_property_listing_text
+from scrapers.portal_utils import normalize_facebook_post_url
 from scrapers.agency.types import PropertyPipelineState
 from scrapers.db_connector import DatabaseConnector
 
@@ -89,11 +90,11 @@ def build_property_pipeline(
             raw_text_map[dedup_key or ""] = raw_text
 
             meta = item.get("metadata") or {}
-            post_url = item.get("url") or meta.get("url")
+            post_url = normalize_facebook_post_url(item.get("url") or "") or (item.get("url") or meta.get("url") or "")
             if post_url:
-                ai_data["url"] = post_url
+                ai_data["url"] = post_url.strip()
             dom_images = meta.get("images") or []
-            if dom_images and not ai_data.get("images"):
+            if dom_images:
                 ai_data["images"] = dom_images[:5]
             if source == "Facebook" and ai_data.get("is_individual") is None:
                 ai_data["is_individual"] = True

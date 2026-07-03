@@ -9,7 +9,7 @@ from scrapers.db_connector import DatabaseConnector
 from scrapers.portal_utils import external_id_from_url, is_facebook_post_url, resolve_lead_identity
 from scrapers.sync_context import get_sync_session
 from scrapers.sync_utils import content_hash
-from scrapers.fb_image_storage import download_facebook_images
+from scrapers.fb_image_storage import host_facebook_images
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +66,9 @@ async def persist_supervised_leads(
 
         if source == "Facebook" and lead.get("images"):
             image_key = url or external_id or lead.get("title", "fb")
-            hosted = await download_facebook_images(lead["images"], image_key)
+            hosted = await host_facebook_images(lead["images"], image_key)
             if hosted:
                 lead["images"] = hosted
-            elif not lead.get("price") and not lead.get("rooms"):
-                skipped += 1
-                logger.info("FB rechazado: sin foto descargable — %s", lead.get("title"))
-                continue
 
         decision = await curator.evaluate_lead(lead, url=url, dedup_key=dedup_key)
         action = decision["action"]

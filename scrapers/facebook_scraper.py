@@ -7,6 +7,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 from scrapers.agency.graphs.facebook_graph import run_facebook_pipeline
+from scrapers.fb_image_storage import host_facebook_images
 from scrapers.base_scraper import BaseScraper
 from scrapers.sync_context import get_mass_fb_scroll_steps, is_mass_mode
 
@@ -31,19 +32,26 @@ EXTRACT_POSTS_JS = """() => {
     }
 
     function postUrlFrom(el) {
+        const hrefPatterns = [
+            '/posts/', '/permalink/', 'story_fbid', 'multi_permalinks',
+            '/photo/', '/videos/', 'fbid=', 'comment_id='
+        ];
         for (const a of el.querySelectorAll('a[href]')) {
             const h = (a.getAttribute('href') || '').toLowerCase();
-            if (
-                h.includes('/posts/') || h.includes('/permalink/') ||
-                h.includes('story_fbid') || h.includes('multi_permalinks') ||
-                h.includes('/photo/') || h.includes('/videos/')
-            ) {
+            if (hrefPatterns.some(p => h.includes(p))) {
+                const url = absUrl(a.getAttribute('href'));
+                if (url) return url;
+            }
+        }
+        for (const a of el.querySelectorAll('a[href*="/groups/"]')) {
+            const h = (a.getAttribute('href') || '').toLowerCase();
+            if (h.includes('/posts/') || h.includes('permalink') || h.includes('multi_permalinks')) {
                 const url = absUrl(a.getAttribute('href'));
                 if (url) return url;
             }
         }
         const timeLink = el.querySelector(
-            'a[href*="/posts/"], a[href*="permalink"], a[aria-label*="hace"]'
+            'a[href*="/posts/"], a[href*="permalink"], a[aria-label*="hace"], a[aria-label*="ago"]'
         );
         if (timeLink) return absUrl(timeLink.getAttribute('href'));
         return '';
@@ -243,6 +251,7 @@ class FacebookScraper(BaseScraper):
                 await self._dismiss_cookies(page)
 
                 dom_posts, page_text, scroll_pos = await self._scroll_and_collect(page)
+                dom_posts = await self._host_images_for_posts(page, dom_posts)
 
                 if not dom_posts:
                     await self._save_debug_artifacts(page, group_id)
@@ -514,6 +523,17 @@ class FacebookScraper(BaseScraper):
 
         page_text = await page.evaluate("() => document.body.innerText || ''")
         return list(posts_by_key.values()), page_text, last_scroll
+
+    async def _host_images_for_posts(self, page, posts: list) -> list:
+        for post in posts:
+            images = post.get("images") or []
+            if not images:
+                continue
+            key = (post.get("url") or post.get("text", ""))[:120]
+            hosted = await host_facebook_images(images, key, page=page)
+            if hosted:
+                post["images"] = hosted
+        return posts
 
     async def _save_debug_artifacts(self, page, group_id):
         DEBUG_DIR.mkdir(parents=True, exist_ok=True)

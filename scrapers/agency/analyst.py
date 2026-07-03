@@ -73,7 +73,7 @@ class AnalystAgent:
         Texto: {raw_content[:3500]}
         """
 
-        return await self._call_ai(prompt, source, prequalified=prequalified)
+        return await self._call_ai(prompt, source, prequalified=prequalified, raw_content=raw_content)
 
     async def parse_bulk_text(
         self,
@@ -104,7 +104,14 @@ class AnalystAgent:
         assign_images_to_leads(leads, page_images or [])
         return leads
 
-    async def _call_ai(self, prompt: str, source: str, is_bulk=False, prequalified: bool = False):
+    async def _call_ai(
+        self,
+        prompt: str,
+        source: str,
+        is_bulk=False,
+        prequalified: bool = False,
+        raw_content: str = "",
+    ):
         """Llamada genérica a OpenAI o Groq (compatible OpenAI)."""
         if not self.llm_key:
             logger.error("❌ Falta GROQ_API_KEY u OPENAI_API_KEY para el análisis IA.")
@@ -132,11 +139,12 @@ class AnalystAgent:
                     if not data.get("is_real_estate", True):
                         logger.warning("🚫 Clasificado como NO inmobiliario por IA.")
                         return None
-                    # Asegurar título
-                    if not data.get("title") or data["title"] == "None":
-                        city = data.get("city") or "Málaga"
-                        data["title"] = f"Propiedad en {city}"
-                    if not data.get("city"):
+                    if not data.get("title") or data["title"] in ("None", "null"):
+                        first_line = (raw_content.split("\n")[0] if prequalified else "").strip()
+                        data["title"] = (first_line[:120] if len(first_line) > 15 else None) or "Anuncio inmobiliario"
+                    if prequalified and not data.get("city"):
+                        data["city"] = None
+                    elif not data.get("city"):
                         data["city"] = "Málaga"
                     data["price"] = self._clean_price(data.get("price"))
                     if not isinstance(data.get("images"), list):

@@ -5,6 +5,7 @@ import {
   ExternalLink, Map as MapIcon, TrendingDown, Building2,
   Trash2, Edit3, Save, RotateCcw
 } from 'lucide-react';
+import { formatPrice, getListingUrl, resolveImageUrl, hasPropertyImage } from './utils/propertyDisplay';
 
 const PropertyIntelligenceModal = ({ property: initialProperty, categories, onClose, onUpdate, onDelete }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -13,10 +14,7 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
 
   if (!property) return null;
 
-  const listingUrl =
-    property.url?.startsWith('http') && !property.url.includes('#lead-')
-      ? property.url
-      : null;
+  const listingUrl = getListingUrl(property);
 
   const hasDiscrepancy = property.opportunity_reasons?.some(r => r.includes("Discrepancia"));
   const catastroVerified = !!property.catastro_ref;
@@ -53,10 +51,15 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
         {/* Media Side */}
         <div className="lg:w-2/5 relative h-64 lg:h-auto bg-slate-100">
           <img 
-            src={property.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000&auto=format&fit=crop'} 
+            src={resolveImageUrl(property.images?.[0]) || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000&auto=format&fit=crop'} 
             className="w-full h-full object-cover"
             alt={property.title}
           />
+          {!hasPropertyImage(property) && (
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+              Sin foto
+            </div>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-60" />
           
           <div className="absolute bottom-8 left-8 right-8 text-white">
@@ -135,7 +138,9 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
                     <span className="text-2xl font-black text-slate-900">€</span>
                   </div>
               ) : (
-                <h3 className="text-4xl font-black text-slate-900">{property.price?.toLocaleString('es-ES')}€</h3>
+                <h3 className={`text-4xl font-black ${Number(property.price) > 0 ? 'text-slate-900' : 'text-slate-500'}`}>
+                  {formatPrice(property.price)}
+                </h3>
               )}
             </div>
             <div className="flex items-center gap-4">
@@ -196,7 +201,11 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
                <div className="space-y-4">
                   <div className="flex justify-between items-center text-sm">
                      <span className="text-slate-500 font-medium">Precio m² (Anuncio):</span>
-                     <span className="text-slate-900 font-bold">{Math.round(property.price / (property.size_m2 || 1))}€</span>
+                     <span className="text-slate-900 font-bold">
+                       {Number(property.price) > 0 && property.size_m2
+                         ? `${Math.round(property.price / property.size_m2).toLocaleString('es-ES')}€`
+                         : '—'}
+                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                      <span className="text-slate-500 font-medium">Media de Zona:</span>
@@ -293,7 +302,7 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
                </a>
              ) : (
                <p className="w-full text-center text-xs font-bold uppercase tracking-widest text-slate-400 py-5">
-                 Enlace al anuncio no disponible — vuelve a scrapear
+                 Enlace no disponible — relanza el scraping masivo
                </p>
              )}
              {isEditing && (

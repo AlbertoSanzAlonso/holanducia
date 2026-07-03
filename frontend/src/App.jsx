@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import PropertyIntelligenceModal from './PropertyIntelligenceModal'
 import AdvisorChat from './AdvisorChat'
 import SettingsView from './SettingsView'
+import { formatPrice, getListingUrl, resolveImageUrl, hasPropertyImage } from './utils/propertyDisplay'
 
 function App() {
   const [properties, setProperties] = useState([])
@@ -247,12 +248,12 @@ function App() {
                     >
                         <div className={`relative aspect-[4/3] rounded-[2.5rem] overflow-hidden bg-slate-100 shadow-lg mb-6 border-4 transition-all ${selectedIds.has(prop.id) ? 'border-[#00acee]' : 'border-transparent'}`}>
                           <img
-                            src={prop.images?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000'}
+                            src={resolveImageUrl(prop.images?.[0]) || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000'}
                             alt={prop.title || 'Propiedad'}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
                             onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000' }}
                           />
-                          {!prop.images?.[0] && (
+                          {!hasPropertyImage(prop) && (
                             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
                               Sin foto
                             </div>
@@ -287,13 +288,26 @@ function App() {
 
                         <div className="px-2">
                            <h3 className="text-xl font-black text-slate-900 leading-tight mb-4 group-hover:text-[#00acee] transition-colors line-clamp-2">{prop.title}</h3>
-                           <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">
-                                 <span className="flex items-center gap-1.5"><MapPin size={14} className="text-[#00acee]" /> {prop.city}</span>
-                                 <span>{prop.size_m2} m²</span>
+                           <div className="flex justify-between items-center gap-3">
+                              <div className="flex items-center gap-4 text-slate-400 text-[10px] font-black uppercase tracking-widest min-w-0">
+                                 <span className="flex items-center gap-1.5 truncate"><MapPin size={14} className="text-[#00acee] shrink-0" /> {prop.city || '—'}</span>
+                                 {prop.size_m2 ? <span className="shrink-0">{prop.size_m2} m²</span> : null}
                               </div>
-                              <div className="text-2xl font-black text-slate-900 bg-slate-50 px-4 py-2 rounded-2xl">{prop.price?.toLocaleString()}€</div>
+                              <div className={`text-lg font-black px-4 py-2 rounded-2xl shrink-0 ${Number(prop.price) > 0 ? 'text-slate-900 bg-slate-50' : 'text-slate-500 bg-slate-100'}`}>
+                                {formatPrice(prop.price)}
+                              </div>
                            </div>
+                           {getListingUrl(prop) && (
+                             <a
+                               href={getListingUrl(prop)}
+                               target="_blank"
+                               rel="noreferrer"
+                               onClick={(e) => e.stopPropagation()}
+                               className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#00acee] hover:underline"
+                             >
+                               Ver anuncio
+                             </a>
+                           )}
                         </div>
                     </motion.div>
                 ))}

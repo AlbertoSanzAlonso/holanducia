@@ -66,6 +66,9 @@ def extract_price_from_text(text: str) -> Optional[float]:
         r"(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{3,7})\s*euros?",
         r"(\d{3,5})\s*€\s*/\s*mes",
         r"(\d{3,5})\s*€/mes",
+        r"(?:precio|pvp|venta|alquiler)[:\s]*(\d{1,3}(?:\.\d{3})+|\d{3,7})",
+        r"(\d{2,3})\s*k\b",
+        r"(\d{2,3})\s*mil\b",
     ]
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -73,6 +76,8 @@ def extract_price_from_text(text: str) -> Optional[float]:
             raw = match.group(1).replace(".", "").replace(",", ".")
             try:
                 value = float(raw)
+                if "k" in pattern or "mil" in pattern:
+                    value *= 1000
                 if 100 <= value <= 50_000_000:
                     return value
             except ValueError:
@@ -108,10 +113,11 @@ def extract_size_m2_from_text(text: str) -> Optional[float]:
 
 
 def enrich_lead_from_raw(lead: Dict[str, Any], raw_text: str) -> Dict[str, Any]:
-    if not lead.get("price"):
-        price = extract_price_from_text(raw_text)
-        if price:
-            lead["price"] = price
+    price = float(lead.get("price") or 0)
+    if price <= 0:
+        extracted = extract_price_from_text(raw_text)
+        if extracted:
+            lead["price"] = extracted
 
     if not lead.get("rooms"):
         rooms = extract_rooms_from_text(raw_text)
