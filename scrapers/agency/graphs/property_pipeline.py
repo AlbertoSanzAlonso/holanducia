@@ -5,7 +5,7 @@ from langgraph.graph import END, START, StateGraph
 
 from scrapers.agency.analyst import AnalystAgent
 from scrapers.agency.curator import CuratorAgent, make_lead_dedup_key
-from scrapers.portal_utils import resolve_lead_identity
+from scrapers.portal_utils import is_facebook_post_url, resolve_lead_identity, external_id_from_url
 from scrapers.agency.types import CurateAction, PropertyPipelineState, RawLead
 from scrapers.db_connector import DatabaseConnector
 
@@ -60,6 +60,17 @@ def build_property_pipeline(
                 continue
             ai_data.pop("is_real_estate", None)
             ai_data["_raw_dedup_key"] = item.get("dedup_key")
+
+            meta = item.get("metadata") or {}
+            post_url = item.get("url") or meta.get("url")
+            if post_url:
+                ai_data["url"] = post_url
+            dom_images = meta.get("images") or []
+            if dom_images and not ai_data.get("images"):
+                ai_data["images"] = dom_images[:5]
+            if source == "Facebook" and ai_data.get("is_individual") is None:
+                ai_data["is_individual"] = True
+
             leads.append(ai_data)
 
         stats = dict(state.get("stats") or {})
@@ -82,7 +93,11 @@ def build_property_pipeline(
             if saved >= limit:
                 break
 
-            dedup_key = make_lead_dedup_key(ai_data.get("title", ""), ai_data.get("price", 0))
+            candidate_url = ai_data.get("url") or ""
+            if candidate_url and is_facebook_post_url(candidate_url):
+                dedup_key = external_id_from_url(candidate_url)
+            else:
+                dedup_key = make_lead_dedup_key(ai_data.get("title", ""), ai_data.get("price", 0))
             url, external_id = resolve_lead_identity(ai_data, base_url)
             ai_data["external_id"] = external_id
             ai_data["url"] = url
@@ -129,7 +144,7 @@ async def run_property_pipeline(
     *,
     source: str,
     base_url: str,
-    raw_candidates: List[str],
+    raw_candidates: List[Any],
     limit: int,
     connector: DatabaseConnector,
     persist_lead: PersistFn,

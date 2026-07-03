@@ -35,7 +35,7 @@ class PipelineStats(TypedDict, total=False):
 class PropertyPipelineState(TypedDict, total=False):
     source: str
     base_url: str
-    raw_candidates: List[str]
+    raw_candidates: List[Any]
     approved: List[RawLead]
     leads: List[Dict[str, Any]]
     saved_count: int

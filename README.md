@@ -8,17 +8,17 @@ Sistema de inteligencia inmobiliaria: scraping, deduplicación, scoring y dashbo
 ┌─────────────────┐         ┌──────────────────────────────────┐
 │  Vercel         │  HTTPS  │  VPS (Hetzner + Coolify)         │
 │  Frontend React │ ──────► │  FastAPI :9000                   │
-│  VITE_API_URL   │         │  Worker · Postgres · Redis       │
+│  /api → proxy   │         │  Worker · Postgres · Redis       │
 └─────────────────┘         └──────────────────────────────────┘
 ```
 
 | Componente | Dónde | Notas |
 |------------|-------|-------|
-| **Frontend** | **Vercel** | `frontend/` — variable `VITE_API_URL` |
+| **Frontend** | **Vercel** | `frontend/` — proxy `/api` en `vercel.json` |
 | **API** | VPS Docker | Puerto **9000** |
-| **Worker** | VPS Docker | Scraping autónomo |
+| **Worker** | VPS Docker | Scraping autónomo (Playwright + Crawl4AI) |
 | **Postgres** | VPS Docker | pgvector para dedup semántica |
-| **Redis** | VPS Docker | Dedup de URLs |
+| **Redis** | VPS Docker | Dedup de URLs y hashes raw |
 
 > **InsForge está deprecado.** Todo el backend vive en el VPS. La carpeta `/insforge` es código legacy.
 
@@ -35,30 +35,33 @@ curl http://localhost:9000/health
 
 Servicios: `api`, `worker`, `postgres`, `redis`. El servicio `frontend` en compose es **opcional** (solo pruebas locales); en producción el frontend va en Vercel.
 
-### Variables `.env` en el VPS
+### Variables `.env` en el VPS (worker + api)
 
 ```env
 GROQ_API_KEY=gsk_...
 FIRECRAWL_API_KEY=fc-...
 OPENAI_API_KEY=sk-...        # embeddings vectoriales (opcional)
+
+# Facebook — login automatizado suele fallar; usar sesión exportada
+FB_USER=tu@email.com
+FB_PASSWORD=...
+FB_SESSION_B64=...           # base64 de fb_session.json (ver abajo)
+# FB_SCROLL_STEPS=55         # pasos de scroll por grupo (default 55)
 ```
+
+Tras cambiar variables en Coolify → **Redeploy** del servicio `worker`.
 
 ---
 
 ## Vercel — Frontend
 
 1. Importa el repo; **Root Directory**: `frontend`
-2. **Environment Variable** (Production + Preview):
+2. **No uses** `VITE_API_URL=http://IP:9000` en producción (Mixed Content HTTPS→HTTP).
+3. El proxy en `frontend/vercel.json` reenvía `/api` y `/health` al VPS por HTTPS.
+4. Deja `VITE_API_URL` **vacía** en Vercel (el frontend usa rutas relativas `/api/...`).
+5. Build command: `npm run build` · Output: `dist`
 
-   ```
-   VITE_API_URL=https://api.tu-dominio.com
-   ```
-
-   Usa la URL pública de tu API en el VPS (IP:9000 o dominio con reverse proxy).
-
-3. Build command: `npm run build` · Output: `dist`
-
-4. Tras cambiar `VITE_API_URL`, haz **Redeploy** (se incluye en el build).
+Si cambias la IP del VPS, actualiza `vercel.json` y redeploy.
 
 ### Desarrollo local del frontend
 
@@ -69,9 +72,33 @@ cd frontend && npm install && npm run dev
 
 ---
 
+## Facebook — sesión y scraping
+
+Facebook bloquea logins automatizados. Flujo recomendado:
+
+```bash
+# En tu máquina local (terminal externa, no Cursor en Pop!_OS)
+python3 -m venv .venv-fb && source .venv-fb/bin/activate
+pip install playwright && playwright install chromium
+export FB_USER=tu@email.com
+export FB_PASSWORD=...
+python scrapers/export_fb_session.py
+# Copia la línea FB_SESSION_B64=... a Coolify → worker → redeploy
+```
+
+El scraper por grupo:
+- Hace **55 scrolls** (configurable con `FB_SCROLL_STEPS`)
+- Extrae por post: **texto**, **enlace al post** y **fotos** del CDN
+- Pipeline: DOM → keywords → Curator → Analyst (Groq) → Persist
+
+Logs útiles: `docker compose logs -f worker` — busca `Scroll paso`, `con enlace`, `con foto`.
+
+---
+
 ## Inteligencia y scraping
 
-- **Scrapers**: Facebook (LangGraph), portales via Crawl4AI/Firecrawl
+- **Facebook**: Playwright + LangGraph (`facebook_scraper.py`, `facebook_graph.py`)
+- **Portales**: Crawl4AI/Firecrawl — URLs reales de anuncio + fotos del listado
 - **Agentes**: Hunter → Curator (Redis + BD + pgvector) → Analyst (Groq) → Persist
 - **Worker**: polling a `/api/scraping-requests/pending`
 - **Trigger manual**: Frontend → Configuración → "Actualizar ahora"
@@ -82,10 +109,11 @@ cd frontend && npm install && npm run dev
 
 ```
 backend/          FastAPI + Postgres + pgvector
-scrapers/         Worker, agentes, snipers
+scrapers/         Worker, agentes, snipers, export_fb_session.py
 frontend/         React (desplegado en Vercel)
 docker-compose.yaml
 db/               init.sql, migrate_pgvector.sql
+skills/holanducia/   Skill del proyecto para agentes IA
 insforge/         ⚠️ LEGACY — no usar
 ```
 
@@ -93,4 +121,6 @@ insforge/         ⚠️ LEGACY — no usar
 
 ## Documentación para agentes
 
-Skill del proyecto: `.claude/skills/holanducia/SKILL.md`
+Skill del proyecto: [`skills/holanducia/SKILL.md`](skills/holanducia/SKILL.md)
+
+Copia local (gitignored): `.claude/skills/holanducia/SKILL.md`

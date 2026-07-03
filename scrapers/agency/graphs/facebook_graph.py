@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Coroutine, Dict, List, Literal, Optional, TypedDict
+from typing import Any, Callable, Coroutine, Dict, List, Literal, Optional, TypedDict, Union
 
 from langgraph.graph import END, START, StateGraph
 
@@ -17,15 +17,17 @@ REAL_ESTATE_KEYWORDS = [
     "reformado", "amueblado", "oportunidad", "urgente",
 ]
 
+FacebookPost = Dict[str, Any]
+
 
 class FacebookPipelineState(TypedDict, total=False):
     group_url: str
     page_text: str
-    dom_posts: List[str]
-    posts: List[str]
+    dom_posts: List[Union[str, FacebookPost]]
+    posts: List[FacebookPost]
     extraction_method: Optional[str]
     diagnosis: Optional[Dict[str, Any]]
-    candidates: List[str]
+    candidates: List[FacebookPost]
     saved_count: int
     skipped_count: int
     stats: Dict[str, Any]
@@ -38,6 +40,26 @@ DedupCheckFn = Callable[[str], Coroutine[Any, Any, bool]]
 MarkScrapedFn = Callable[[str], Coroutine[Any, Any, None]]
 
 
+def _normalize_post(item: Any) -> Optional[FacebookPost]:
+    if isinstance(item, dict):
+        text = (item.get("text") or item.get("raw_text") or "").strip()
+        if len(text) < 40:
+            return None
+        return {
+            "text": text,
+            "url": (item.get("url") or "").strip(),
+            "images": item.get("images") or [],
+        }
+    text = str(item).strip()
+    if len(text) < 40:
+        return None
+    return {"text": text, "url": "", "images": []}
+
+
+def _post_text(post: FacebookPost) -> str:
+    return (post.get("text") or "").strip()
+
+
 def build_facebook_graph(
     connector: DatabaseConnector,
     persist_lead: PersistFn,
@@ -47,9 +69,21 @@ def build_facebook_graph(
     scout = ScoutAgent()
 
     async def use_dom_posts(state: FacebookPipelineState) -> FacebookPipelineState:
-        posts = [p.strip() for p in state.get("dom_posts", []) if len(p.strip()) > 50]
+        posts: List[FacebookPost] = []
+        for raw in state.get("dom_posts", []):
+            normalized = _normalize_post(raw)
+            if normalized:
+                posts.append(normalized)
+
+        with_url = sum(1 for p in posts if p.get("url"))
+        with_img = sum(1 for p in posts if p.get("images"))
         method = "dom" if posts else None
-        logger.info("LangGraph [use_dom_posts]: %s fragmentos del DOM", len(posts))
+        logger.info(
+            "LangGraph [use_dom_posts]: %s posts (%s con enlace, %s con foto)",
+            len(posts),
+            with_url,
+            with_img,
+        )
         return {"posts": posts, "extraction_method": method}
 
     async def diagnose_page(state: FacebookPipelineState) -> FacebookPipelineState:
@@ -62,18 +96,26 @@ def build_facebook_graph(
         return {"diagnosis": diagnosis}
 
     async def ai_extract(state: FacebookPipelineState) -> FacebookPipelineState:
-        posts = await scout.extract_posts_from_text(state.get("page_text", ""), "Facebook")
+        raw_posts = await scout.extract_posts_from_text(state.get("page_text", ""), "Facebook")
+        posts = []
+        for raw in raw_posts:
+            normalized = _normalize_post(raw)
+            if normalized:
+                posts.append(normalized)
         logger.info("LangGraph [ai_extract]: Scout extrajo %s posts vía IA", len(posts))
         return {"posts": posts, "extraction_method": "ai"}
 
     async def filter_candidates(state: FacebookPipelineState) -> FacebookPipelineState:
         posts = state.get("posts", [])
-        candidates = [p for p in posts if any(k in p.lower() for k in REAL_ESTATE_KEYWORDS)]
+        candidates = [
+            p for p in posts
+            if any(k in _post_text(p).lower() for k in REAL_ESTATE_KEYWORDS)
+        ]
 
         if not candidates and posts:
-            candidates = sorted(posts, key=len, reverse=True)[:15]
+            candidates = sorted(posts, key=lambda p: len(_post_text(p)), reverse=True)[:20]
             logger.info(
-                "LangGraph [filter]: sin keywords — enviando %s posts al Analyst (decisión is_real_estate)",
+                "LangGraph [filter]: sin keywords — enviando %s posts al Analyst",
                 len(candidates),
             )
         else:
@@ -144,7 +186,7 @@ def build_facebook_graph(
 async def run_facebook_pipeline(
     group_url: str,
     page_text: str,
-    dom_posts: List[str],
+    dom_posts: List[Union[str, FacebookPost]],
     limit: int,
     connector: DatabaseConnector,
     persist_lead: PersistFn,

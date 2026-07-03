@@ -16,32 +16,80 @@ SESSION_FILE = DEBUG_DIR / "fb_session.json"
 
 EXTRACT_POSTS_JS = """() => {
     const posts = [];
-    const selectors = [
-        'div[role="article"]',
-        'article',
-        'div[data-ad-preview="message"]',
-        'div[data-ad-comet-preview="message"]',
-        'div[data-ad-rendering-role="story_message"]',
-        'div[data-sigil="m-feed-voice-subtitle"]',
-        'div[data-sigil="m-feed-voice-internal"]',
-    ];
-    selectors.forEach(sel => {
-        document.querySelectorAll(sel).forEach(el => {
-            const text = (el.innerText || '').trim();
-            if (text.length > 60) posts.push(text);
-        });
-    });
-    const feed = document.querySelector('[role="main"], [role="feed"], #scrollview');
-    if (feed) {
-        feed.querySelectorAll('div[dir="auto"]').forEach(el => {
-            const text = (el.innerText || '').trim();
-            if (text.length > 80) posts.push(text);
-        });
+    const seen = new Set();
+
+    function absUrl(href) {
+        if (!href) return '';
+        try {
+            const u = new URL(href, location.href);
+            if (!u.hostname.includes('facebook.com')) return '';
+            return u.href.split('#')[0];
+        } catch (e) {
+            return '';
+        }
     }
-    return [...new Set(posts)];
+
+    function postUrlFrom(el) {
+        for (const a of el.querySelectorAll('a[href]')) {
+            const h = (a.getAttribute('href') || '').toLowerCase();
+            if (
+                h.includes('/posts/') || h.includes('/permalink/') ||
+                h.includes('story_fbid') || h.includes('multi_permalinks') ||
+                h.includes('/photo/') || h.includes('/videos/')
+            ) {
+                const url = absUrl(a.getAttribute('href'));
+                if (url) return url;
+            }
+        }
+        const timeLink = el.querySelector(
+            'a[href*="/posts/"], a[href*="permalink"], a[aria-label*="hace"]'
+        );
+        if (timeLink) return absUrl(timeLink.getAttribute('href'));
+        return '';
+    }
+
+    function imagesFrom(el) {
+        const imgs = [];
+        el.querySelectorAll('img[src]').forEach(img => {
+            const src = img.src || '';
+            if (!src.includes('scontent') && !src.includes('fbcdn')) return;
+            if (src.includes('emoji') || src.includes('static.xx') || src.includes('rsrc.php')) return;
+            imgs.push(src.split('&')[0].split('?')[0]);
+        });
+        return [...new Set(imgs)].slice(0, 6);
+    }
+
+    const articles = document.querySelectorAll('div[role="article"], article');
+    articles.forEach(el => {
+        const text = (el.innerText || '').trim();
+        if (text.length < 40) return;
+        const url = postUrlFrom(el);
+        const images = imagesFrom(el);
+        const key = url || text.slice(0, 150);
+        if (seen.has(key)) return;
+        seen.add(key);
+        posts.push({ text, url, images });
+    });
+
+    if (posts.length === 0) {
+        const feed = document.querySelector('[role="main"], [role="feed"], #scrollview');
+        if (feed) {
+            feed.querySelectorAll('div[dir="auto"]').forEach(el => {
+                const text = (el.innerText || '').trim();
+                if (text.length < 80) return;
+                const key = text.slice(0, 150);
+                if (seen.has(key)) return;
+                seen.add(key);
+                posts.push({ text, url: '', images: imagesFrom(el) });
+            });
+        }
+    }
+
+    return posts;
 }"""
 
-SCROLL_JS = """() => {
+SCROLL_JS = """(delta) => {
+    const step = delta || 900;
     const scrollables = [...document.querySelectorAll('div, main')].filter(el => {
         const s = getComputedStyle(el);
         return (s.overflowY === 'auto' || s.overflowY === 'scroll')
@@ -51,15 +99,17 @@ SCROLL_JS = """() => {
         (a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight)
     )[0];
     if (target) {
-        target.scrollTop += 900;
+        target.scrollTop += step;
         return { method: 'container', scroll: target.scrollTop };
     }
-    window.scrollBy(0, 900);
+    window.scrollBy(0, step);
     return {
         method: 'window',
         scroll: window.pageYOffset || document.documentElement.scrollTop || 0,
     };
 }"""
+
+FB_SCROLL_STEPS = int(os.getenv("FB_SCROLL_STEPS", "55"))
 
 
 class FacebookScraper(BaseScraper):
@@ -363,11 +413,11 @@ class FacebookScraper(BaseScraper):
                 continue
 
     async def _scroll_and_collect(self, page):
-        unique_posts = set()
+        posts_by_key: dict[str, dict] = {}
         last_scroll = 0
         stagnant = 0
 
-        for step in range(35):
+        for step in range(FB_SCROLL_STEPS):
             if page.is_closed():
                 break
 
@@ -375,7 +425,7 @@ class FacebookScraper(BaseScraper):
                 expand_btns = await page.get_by_text(
                     re.compile(r"Ver más|See more", re.IGNORECASE)
                 ).all()
-                for btn in expand_btns[:5]:
+                for btn in expand_btns[:8]:
                     if await btn.is_visible():
                         await btn.click(timeout=300)
             except Exception:
@@ -383,34 +433,62 @@ class FacebookScraper(BaseScraper):
 
             fragments = await page.evaluate(EXTRACT_POSTS_JS)
             for frag in fragments:
-                if len(frag.strip()) > 50:
-                    unique_posts.add(frag.strip())
+                if not isinstance(frag, dict):
+                    text = str(frag).strip()
+                    if len(text) < 40:
+                        continue
+                    key = text[:150]
+                    posts_by_key.setdefault(key, {"text": text, "url": "", "images": []})
+                    continue
 
-            scroll_info = await page.evaluate(SCROLL_JS)
+                text = (frag.get("text") or "").strip()
+                if len(text) < 40:
+                    continue
+                url = (frag.get("url") or "").strip()
+                images = frag.get("images") or []
+                key = url or text[:150]
+                existing = posts_by_key.get(key)
+                if existing:
+                    if url and not existing.get("url"):
+                        existing["url"] = url
+                    if images and not existing.get("images"):
+                        existing["images"] = images
+                else:
+                    posts_by_key[key] = {"text": text, "url": url, "images": images}
+
+            scroll_delta = 900 if stagnant < 2 else 1400
+            scroll_info = await page.evaluate(SCROLL_JS, scroll_delta)
             current_scroll = scroll_info.get("scroll", 0)
 
             if step % 5 == 0:
+                with_url = sum(1 for p in posts_by_key.values() if p.get("url"))
+                with_img = sum(1 for p in posts_by_key.values() if p.get("images"))
                 logger.info(
-                    "Scroll paso %s: %s fragmentos, pos=%spx (%s)",
+                    "Scroll paso %s/%s: %s posts (%s con enlace, %s con foto), pos=%spx (%s)",
                     step,
-                    len(unique_posts),
+                    FB_SCROLL_STEPS,
+                    len(posts_by_key),
+                    with_url,
+                    with_img,
                     current_scroll,
                     scroll_info.get("method", "?"),
                 )
 
             if current_scroll == last_scroll:
                 stagnant += 1
-                if stagnant >= 3:
+                if stagnant >= 2:
                     await page.keyboard.press("PageDown")
+                if stagnant >= 4:
+                    await page.keyboard.press("End")
                     stagnant = 0
             else:
                 stagnant = 0
 
             last_scroll = current_scroll
-            await page.wait_for_timeout(1200)
+            await page.wait_for_timeout(1000 if stagnant else 800)
 
         page_text = await page.evaluate("() => document.body.innerText || ''")
-        return list(unique_posts), page_text, last_scroll
+        return list(posts_by_key.values()), page_text, last_scroll
 
     async def _save_debug_artifacts(self, page, group_id):
         DEBUG_DIR.mkdir(parents=True, exist_ok=True)

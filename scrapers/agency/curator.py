@@ -52,8 +52,23 @@ class CuratorAgent:
         *,
         source: str,
         base_url: str,
+        post_url: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> CurateResult:
-        dedup_key = make_dedup_key(raw_text)
+        dedup_key = make_dedup_key(post_url or raw_text, prefix="fb" if post_url else "raw")
+        if post_url and await self.is_already_scraped(post_url):
+            return {
+                "action": CurateAction.DUPLICATE.value,
+                "raw_lead": {
+                    "source": source,
+                    "raw_text": raw_text,
+                    "dedup_key": dedup_key,
+                    "base_url": base_url,
+                    "url": post_url,
+                    "metadata": metadata or {},
+                },
+                "reason": "redis_post_url",
+            }
         if await self.is_already_scraped(dedup_key):
             return {
                 "action": CurateAction.DUPLICATE.value,
@@ -62,6 +77,8 @@ class CuratorAgent:
                     "raw_text": raw_text,
                     "dedup_key": dedup_key,
                     "base_url": base_url,
+                    "url": post_url,
+                    "metadata": metadata or {},
                 },
                 "reason": "redis_raw_hash",
             }
@@ -73,6 +90,8 @@ class CuratorAgent:
                 "raw_text": raw_text,
                 "dedup_key": dedup_key,
                 "base_url": base_url,
+                "url": post_url,
+                "metadata": metadata or {},
             },
             "reason": "new_candidate",
         }
@@ -132,7 +151,7 @@ class CuratorAgent:
 
     async def curate_batch(
         self,
-        raw_texts: List[str],
+        raw_items: List[Any],
         *,
         source: str,
         base_url: str,
@@ -140,8 +159,27 @@ class CuratorAgent:
         approved: List[RawLead] = []
         skipped = 0
 
-        for text in raw_texts:
-            result = await self.evaluate_raw(text, source=source, base_url=base_url)
+        for item in raw_items:
+            if isinstance(item, dict):
+                text = (item.get("text") or item.get("raw_text") or "").strip()
+                post_url = item.get("url")
+                metadata = {"url": post_url, "images": item.get("images") or []}
+            else:
+                text = str(item).strip()
+                post_url = None
+                metadata = {}
+
+            if len(text) < 40:
+                skipped += 1
+                continue
+
+            result = await self.evaluate_raw(
+                text,
+                source=source,
+                base_url=base_url,
+                post_url=post_url,
+                metadata=metadata,
+            )
             if result["action"] == CurateAction.NEW.value:
                 approved.append(result["raw_lead"])
             else:
@@ -152,6 +190,6 @@ class CuratorAgent:
             "Curator [raw]: %s aprobados, %s duplicados de %s candidatos",
             len(approved),
             skipped,
-            len(raw_texts),
+            len(raw_items),
         )
         return approved, skipped

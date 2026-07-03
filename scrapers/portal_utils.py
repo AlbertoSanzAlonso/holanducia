@@ -44,8 +44,19 @@ def is_listing_detail_url(url: str) -> bool:
     return any(hint in path for hint in DETAIL_PATH_HINTS)
 
 
+def is_facebook_post_url(url: str) -> bool:
+    url = normalize_portal_url(url)
+    if not url or "facebook.com" not in url.lower():
+        return False
+    lower = url.lower()
+    return any(
+        token in lower
+        for token in ("/posts/", "/permalink/", "story_fbid", "multi_permalinks", "/photo/")
+    )
+
+
 def is_valid_listing_url(url: str) -> bool:
-    return is_listing_detail_url(url) and "#lead-" not in url
+    return is_listing_detail_url(url) or is_facebook_post_url(url)
 
 
 def external_id_from_url(url: str) -> str:
@@ -90,7 +101,7 @@ def resolve_lead_identity(lead: dict, base_url: str) -> tuple[str, str]:
     from scrapers.agency.curator import make_lead_dedup_key
 
     candidate = lead.get("url") or ""
-    if is_valid_listing_url(candidate):
+    if candidate and "#lead-" not in candidate and is_valid_listing_url(candidate):
         return candidate, external_id_from_url(candidate)
 
     if is_listing_detail_url(base_url):

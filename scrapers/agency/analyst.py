@@ -39,8 +39,8 @@ class AnalystAgent:
         prequalified_note = ""
         if prequalified:
             prequalified_note = """
-        NOTA: Este post YA pasó el filtro de keywords inmobiliarios del grupo.
-        Debes extraer la propiedad y poner is_real_estate=true salvo spam evidente.
+        NOTA: Post de grupo Facebook (Málaga/ Costa del Sol). Extrae TODO lo que aparezca en el texto.
+        is_real_estate=true salvo spam evidente. is_individual=true si parece particular.
         """
 
         prompt = f"""
@@ -48,25 +48,28 @@ class AnalystAgent:
         Analiza el siguiente texto de {source} y extrae los datos de la propiedad.
         {prequalified_note}
         REGLAS DE ORO:
-        1. TÍTULO: Crea un título profesional y atractivo basado en el contenido (Máx 10 palabras). NUNCA devuelvas "None" o vacío.
-        2. PRECIO: Pon el número. Si no hay, pon 0.
-        3. CIUDAD: Dúdicela o usa el contexto (Málaga, Marbella, etc).
-        4. FILTRO is_real_estate:
-           - true si el post ofrece, busca o comenta una vivienda (aunque sea informal).
-           - false SOLO si es claramente otro tema (memes, eventos, spam, noticias, venta de muebles/coches).
+        1. TÍTULO: Profesional, específico (zona + tipo + habitaciones). NUNCA vacío.
+        2. PRECIO: Número en euros. Si dice 1800/mes es alquiler — indícalo en description.
+        3. CIUDAD/BARRIO: Extrae del texto; si no hay, usa "Málaga".
+        4. DESCRIPTION: Copia datos clave del anuncio (m², planta, extras, contacto).
+        5. size_m2, rooms, bathrooms: extrae si aparecen (null si no).
 
         Devuelve SOLO un JSON:
         {{
             "title": "título profesional",
             "price": número,
             "city": "ciudad",
-            "description": "resumen breve",
-            "rooms": número,
-            "images": ["url_foto1", "url_foto2"],
+            "neighborhood": "barrio o null",
+            "description": "descripción completa",
+            "rooms": número o null,
+            "bathrooms": número o null,
+            "size_m2": número o null,
+            "images": [],
+            "is_individual": true/false,
             "is_real_estate": true/false
         }}
 
-        Texto: {raw_content[:2000]}
+        Texto: {raw_content[:3500]}
         """
 
         return await self._call_ai(prompt, source, prequalified=prequalified)
