@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 import re
@@ -81,20 +82,46 @@ class FacebookScraper(BaseScraper):
             return f"https://www.facebook.com/groups/{url}"
         return url.replace("m.facebook.com", "www.facebook.com")
 
+    def _bootstrap_session_file(self) -> None:
+        """Importa sesión Playwright desde env (evita login automatizado bloqueado por FB)."""
+        if SESSION_FILE.exists():
+            return
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+
+        session_b64 = os.getenv("FB_SESSION_B64", "").strip()
+        if session_b64:
+            try:
+                SESSION_FILE.write_bytes(base64.b64decode(session_b64))
+                logger.info("Sesión FB importada desde FB_SESSION_B64")
+                return
+            except Exception as e:
+                logger.warning("FB_SESSION_B64 inválido: %s", e)
+
+        session_path = os.getenv("FB_SESSION_PATH", "").strip()
+        if session_path and Path(session_path).is_file():
+            SESSION_FILE.write_bytes(Path(session_path).read_bytes())
+            logger.info("Sesión FB copiada desde %s", session_path)
+
     async def _persist_lead(self, ai_data: dict, _group_url: str) -> bool:
         return await self.connector.upsert_property(ai_data)
 
     async def scrape_multiple(self, groups: list):
+        self._bootstrap_session_file()
         logger.info(
-            "Facebook scraper — FB_USER=%s, FB_PASSWORD=%s",
+            "Facebook scraper — FB_USER=%s, FB_PASSWORD=%s, session_file=%s",
             self._mask_email(self.user or ""),
             "set" if self.password else "missing",
+            "yes" if SESSION_FILE.exists() else "no",
         )
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                args=["--disable-blink-features=AutomationControlled"],
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox",
+                ],
             )
             storage_state = str(SESSION_FILE) if SESSION_FILE.exists() else None
             if storage_state:
@@ -173,7 +200,7 @@ class FacebookScraper(BaseScraper):
                     msg = (
                         f"Facebook 0 leads en {group_url}: {hint}. "
                         f"posts={posts_total}, descartados_ia={rejected}. "
-                        "¿FB_USER/FB_PASSWORD configurados?"
+                        "Login FB falló — prueba FB_SESSION_B64 o verifica contraseña."
                     )
                     logger.warning(msg)
                     await self.connector.upsert_scraping_status("processing", msg)
@@ -206,45 +233,113 @@ class FacebookScraper(BaseScraper):
 
     async def _login(self, page, context) -> bool:
         logger.info("Fase login: identificando a %s...", self._mask_email(self.user or ""))
-        try:
-            await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(1500)
-            await self._dismiss_cookies(page)
-            await page.wait_for_selector('input[name="email"]', timeout=15000)
-            await page.fill('input[name="email"]', self.user)
-            await page.fill('input[name="pass"]', self.password)
 
-            for sel in ['button[name="login"]', 'button:has-text("Log In")', 'button:has-text("Iniciar sesión")']:
+        for login_url in (
+            "https://www.facebook.com/login",
+            "https://m.facebook.com/login.php",
+        ):
+            if await self._attempt_login_at(page, context, login_url):
+                return True
+
+        await self._save_login_debug(page)
+        logger.warning(
+            "Login Facebook falló en www y m.facebook.com — "
+            "Facebook suele bloquear logins automatizados. "
+            "Usa FB_SESSION_B64 (cookies exportadas) o verifica la contraseña."
+        )
+        return False
+
+    async def _attempt_login_at(self, page, context, login_url: str) -> bool:
+        try:
+            await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(2000)
+            await self._dismiss_cookies(page)
+
+            email_filled = False
+            for sel in ('input[name="email"]', 'input#email', 'input[name="username"]', 'input[type="email"]'):
                 try:
-                    btn = page.locator(sel).first
-                    if await btn.is_visible(timeout=2000):
-                        await btn.click(timeout=5000)
+                    field = page.locator(sel).first
+                    if await field.is_visible(timeout=3000):
+                        await field.click(timeout=2000)
+                        await field.fill(self.user)
+                        email_filled = True
                         break
                 except Exception:
                     continue
 
-            await page.wait_for_timeout(8000)
+            if not email_filled:
+                logger.warning("Login %s: no se encontró campo email", login_url)
+                return False
+
+            pass_filled = False
+            for sel in ('input[name="pass"]', 'input#pass', 'input[type="password"]'):
+                try:
+                    field = page.locator(sel).first
+                    if await field.is_visible(timeout=3000):
+                        await field.click(timeout=2000)
+                        await field.fill(self.password)
+                        pass_filled = True
+                        break
+                except Exception:
+                    continue
+
+            if not pass_filled:
+                logger.warning("Login %s: no se encontró campo password", login_url)
+                return False
+
+            clicked = False
+            for sel in (
+                'button[name="login"]',
+                'button[type="submit"]',
+                '#loginbutton',
+                'button:has-text("Log In")',
+                'button:has-text("Iniciar sesión")',
+                'div[role="button"]:has-text("Iniciar sesión")',
+            ):
+                try:
+                    btn = page.locator(sel).first
+                    if await btn.is_visible(timeout=2000):
+                        await btn.click(timeout=5000)
+                        clicked = True
+                        break
+                except Exception:
+                    continue
+
+            if not clicked:
+                await page.keyboard.press("Enter")
+
+            await page.wait_for_timeout(10000)
             await self._dismiss_cookies(page)
 
             url = page.url.lower()
-            if "checkpoint" in url or "two_step" in url:
-                logger.warning(
-                    "Facebook pide verificación extra (checkpoint/2FA): %s — "
-                    "inicia sesión manualmente una vez o desactiva 2FA para esta cuenta bot.",
-                    page.url,
-                )
+            body_snippet = (await page.evaluate("() => document.body.innerText || ''"))[:500].lower()
+
+            if "checkpoint" in url or "two_step" in url or "approvals" in url:
+                logger.warning("Facebook checkpoint/2FA en %s", page.url)
                 return False
-            if "login" in url:
-                logger.warning("Login fallido — sigue en página de login: %s", page.url)
+            if "captcha" in body_snippet or "security check" in body_snippet:
+                logger.warning("Facebook captcha detectado tras login en %s", login_url)
+                return False
+            if "login" in url and "logout" not in url:
+                logger.warning("Login fallido en %s — URL: %s", login_url, page.url)
                 return False
 
             DEBUG_DIR.mkdir(parents=True, exist_ok=True)
             await context.storage_state(path=str(SESSION_FILE))
-            logger.info("Login OK — sesión guardada en %s", SESSION_FILE.name)
+            logger.info("Login OK via %s — sesión guardada", login_url)
             return True
         except Exception as e:
-            logger.warning("Error en login: %s", e)
+            logger.warning("Error login en %s: %s", login_url, e)
             return False
+
+    async def _save_login_debug(self, page):
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            path = DEBUG_DIR / "fb_login_failed.png"
+            await page.screenshot(path=str(path), full_page=False)
+            logger.info("Captura login fallido: %s", path.name)
+        except Exception as e:
+            logger.warning("No se pudo guardar captura de login: %s", e)
 
     async def _dismiss_cookies(self, page):
         patterns = [
