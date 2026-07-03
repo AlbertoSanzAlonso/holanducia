@@ -7,11 +7,12 @@ from scrapers.agency.hunter import HunterAgent
 from scrapers.db_connector import DatabaseConnector, build_portal_urls
 from scrapers.facebook_scraper import FacebookScraper
 from scrapers.portal_utils import prioritize_portal_urls
-from scrapers.sync_context import SyncSession, sync_mode, sync_session
+from scrapers.sync_context import SyncSession, mass_fb_scroll_steps, mass_mode, sync_mode, sync_session
 
 logger = logging.getLogger(__name__)
 
 PORTAL_NAMES = ("Fotocasa", "Habitaclia", "Pisos.com", "Pisos")
+MASS_MISSION_TYPES = frozenset({"mass_scrape", "daily_sync"})
 
 
 class DirectorAgent:
@@ -52,14 +53,32 @@ class DirectorAgent:
                 sources.append(host)
         return sources
 
+    def _is_mass_mission(self, request: Dict[str, Any]) -> bool:
+        return request.get("source_name") in MASS_MISSION_TYPES
+
     async def execute_mission(self, request: Dict[str, Any] = None):
         settings = await self.db.get_settings() or {}
         res = request or {}
+        is_mass = self._is_mass_mission(res)
 
-        is_daily = res.get("source_name") == "daily_sync"
-        quota = res.get("target_leads") or settings.get("target_leads") or settings.get("max_leads_per_portal") or 10
-        if is_daily:
-            quota = int(os.getenv("DAILY_SYNC_TARGET", res.get("target_leads") or 200))
+        if is_mass:
+            quota = (
+                res.get("target_leads")
+                or settings.get("mass_scrape_target")
+                or int(os.getenv("MASS_SCRAPE_TARGET", "500"))
+            )
+            fb_scroll = (
+                settings.get("mass_fb_scroll_steps")
+                or int(os.getenv("MASS_FB_SCROLL_STEPS", "100"))
+            )
+        else:
+            quota = (
+                res.get("target_leads")
+                or settings.get("target_leads")
+                or settings.get("max_leads_per_portal")
+                or 10
+            )
+            fb_scroll = int(os.getenv("FB_SCROLL_STEPS", "55"))
 
         fb_groups = res.get("groups") or settings.get("facebook_groups") or settings.get("groups")
         portal_urls = res.get("portal_urls") or build_portal_urls(settings)
@@ -85,21 +104,24 @@ class DirectorAgent:
         sources = self._collect_sources(fb_groups, portal_urls)
 
         session: SyncSession | None = None
-        if is_daily:
+        if is_mass:
             sync_mode.set(True)
+            mass_mode.set(True)
+            mass_fb_scroll_steps.set(fb_scroll)
             sync_run_id = await self.db.start_sync_run(sources)
             session = SyncSession(sync_run_id, sources)
             sync_session.set(session)
             logger.info(
-                "Sync diario #%s — %s fuentes, objetivo %s anuncios",
+                "Scraping MASIVO #%s — %s fuentes, cuota %s, scroll FB %s pasos",
                 sync_run_id,
                 len(sources),
                 quota,
+                fb_scroll,
             )
 
         logger.info(
-            "Iniciando mision%s. Objetivo: %s. Fuentes: %s grupos FB, %s portales.",
-            " (sync diario)" if is_daily else "",
+            "Misión%s — cuota %s, %s grupos FB, %s portales",
+            " MASIVA" if is_mass else "",
             quota,
             len(fb_groups),
             len(portal_urls),
@@ -107,14 +129,14 @@ class DirectorAgent:
 
         total_captured = 0
         attempts = 0
-        max_attempts = 5 if not is_daily else 3
+        max_attempts = 10 if is_mass else 5
 
         try:
             while total_captured < quota and attempts < max_attempts:
                 attempts += 1
                 if attempts > 1:
-                    logger.info("Ronda %s — %s/%s leads", attempts, total_captured, quota)
-                    await asyncio.sleep(60 if not is_daily else 30)
+                    logger.info("Ronda %s — %s/%s procesados", attempts, total_captured, quota)
+                    await asyncio.sleep(30 if is_mass else 60)
 
                 if fb_groups:
                     import random
@@ -125,7 +147,7 @@ class DirectorAgent:
 
                 if portal_urls and total_captured < quota:
                     backend = os.getenv("SNIPER_BACKEND", "crawl4ai").lower()
-                    logger.info("Modo Sniper (%s) — %s portales", backend, len(portal_urls))
+                    logger.info("Sniper (%s) — %s portales", backend, len(portal_urls))
 
                     if backend == "firecrawl":
                         from scrapers.firecrawl_sniper import FirecrawlSniper
@@ -149,14 +171,15 @@ class DirectorAgent:
                     stats=session.stats,
                 )
                 logger.info(
-                    "Sync diario completado — creados=%s actualizados=%s sin_cambios=%s dados_de_baja=%s",
+                    "Scraping masivo completado — creados=%s actualizados=%s sin_cambios=%s bajas=%s",
                     session.stats.get("created", 0),
                     session.stats.get("updated", 0),
                     session.stats.get("unchanged", 0),
                     result.get("deactivated", 0),
                 )
                 sync_mode.set(False)
+                mass_mode.set(False)
                 sync_session.set(None)
 
-        logger.info("Director: mision cerrada con %s leads procesados.", total_captured)
+        logger.info("Director: misión cerrada — %s anuncios procesados", total_captured)
         return total_captured

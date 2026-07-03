@@ -44,11 +44,16 @@ async def scheduler_loop(client: httpx.AsyncClient, api_url: str) -> None:
                     await asyncio.sleep(3600)
                     continue
 
-                target = int(os.getenv("DAILY_SYNC_TARGET", "200"))
+                settings_resp = await client.get(f"{api_url}/api/settings")
+                settings = settings_resp.json() if settings_resp.status_code == 200 else {}
+                target = (
+                    settings.get("mass_scrape_target")
+                    or int(os.getenv("MASS_SCRAPE_TARGET", os.getenv("DAILY_SYNC_TARGET", "500")))
+                )
                 resp = await client.post(
                     f"{api_url}/api/scraping-requests",
                     json={
-                        "source_name": "daily_sync",
+                        "source_name": "mass_scrape",
                         "target_leads": target,
                         "status": "pending",
                     },
@@ -56,7 +61,7 @@ async def scheduler_loop(client: httpx.AsyncClient, api_url: str) -> None:
                 if resp.status_code < 400:
                     if redis_client:
                         redis_client.set(today_key, "1", ex=86400)
-                    logger.info("Sync diario encolado — objetivo %s anuncios", target)
+                    logger.info("Scraping masivo diario encolado — cuota %s", target)
         except Exception as e:
             logger.warning("Error en scheduler diario: %s", e)
 

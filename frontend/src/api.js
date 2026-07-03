@@ -32,4 +32,5 @@ export const api = {
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
   createScrapingRequest: (data) => request('/api/scraping-requests', { method: 'POST', body: JSON.stringify(data) }),
   getLatestScrapingRequest: () => request('/api/scraping-requests/latest'),
+  getDatabaseStats: () => request('/api/sync/stats'),
 }

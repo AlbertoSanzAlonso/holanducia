@@ -8,6 +8,7 @@ from playwright.async_api import async_playwright
 
 from scrapers.agency.graphs.facebook_graph import run_facebook_pipeline
 from scrapers.base_scraper import BaseScraper
+from scrapers.sync_context import get_mass_fb_scroll_steps, is_mass_mode
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,12 @@ FB_SCROLL_STEPS = int(os.getenv("FB_SCROLL_STEPS", "55"))
 
 
 class FacebookScraper(BaseScraper):
+    @staticmethod
+    def _scroll_steps() -> int:
+        if is_mass_mode():
+            return get_mass_fb_scroll_steps()
+        return FB_SCROLL_STEPS
+
     def __init__(self, group_url, limit=50):
         super().__init__("Facebook", base_url="https://facebook.com")
         self.group_url = self._format_url(group_url)
@@ -435,7 +442,7 @@ class FacebookScraper(BaseScraper):
         last_scroll = 0
         stagnant = 0
 
-        for step in range(FB_SCROLL_STEPS):
+        for step in range(self._scroll_steps()):
             if page.is_closed():
                 break
 
@@ -484,7 +491,7 @@ class FacebookScraper(BaseScraper):
                 logger.info(
                     "Scroll paso %s/%s: %s posts (%s con enlace, %s con foto), pos=%spx (%s)",
                     step,
-                    FB_SCROLL_STEPS,
+                    self._scroll_steps(),
                     len(posts_by_key),
                     with_url,
                     with_img,

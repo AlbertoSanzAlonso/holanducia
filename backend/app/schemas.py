@@ -95,6 +95,8 @@ class SettingsOut(BaseModel):
     portals: str = "Fotocasa, Habitaclia, Pisos.com, Facebook"
     max_leads_per_portal: int = 10
     target_leads: int = 10
+    mass_scrape_target: int = 500
+    mass_fb_scroll_steps: int = 100
     facebook_groups: List[str] = Field(default_factory=list)
     portal_urls: List[str] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
@@ -108,6 +110,8 @@ class SettingsUpdate(BaseModel):
     portals: Optional[str] = None
     max_leads_per_portal: Optional[int] = None
     target_leads: Optional[int] = None
+    mass_scrape_target: Optional[int] = None
+    mass_fb_scroll_steps: Optional[int] = None
     facebook_groups: Optional[List[str]] = None
     portal_urls: Optional[List[str]] = None
 
@@ -189,3 +193,20 @@ class SyncFinalizeResponse(BaseModel):
     created: int = 0
     updated: int = 0
     unchanged: int = 0
+
+
+class PropertyStatsBySource(BaseModel):
+    source: str
+    active: int
+    inactive: int
+    total: int
+
+
+class DatabaseStatsResponse(BaseModel):
+    total_active: int
+    total_inactive: int
+    total: int
+    by_source: List[PropertyStatsBySource]
+    without_embedding: int
+    stale_7d: int
+    last_sync: Optional[dict] = None

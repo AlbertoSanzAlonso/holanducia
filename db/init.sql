@@ -56,6 +56,8 @@ CREATE TABLE user_settings (
     min_size_m2 INTEGER DEFAULT 60,
     portals VARCHAR(200) DEFAULT 'Fotocasa, Habitaclia, Pisos.com, Facebook',
     max_leads_per_portal INTEGER DEFAULT 10,
+    mass_scrape_target INTEGER DEFAULT 500,
+    mass_fb_scroll_steps INTEGER DEFAULT 100,
     target_leads INTEGER DEFAULT 10,
     facebook_groups TEXT[] DEFAULT ARRAY['41757906864', '1018337428507491', '397742921612774'],
     portal_urls TEXT[] DEFAULT ARRAY[]::TEXT[],

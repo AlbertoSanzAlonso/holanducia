@@ -72,6 +72,8 @@ class UserSettings(Base):
     portals: Mapped[str] = mapped_column(String(200), default="Fotocasa, Habitaclia, Pisos.com, Facebook")
     max_leads_per_portal: Mapped[int] = mapped_column(Integer, default=10)
     target_leads: Mapped[int] = mapped_column(Integer, default=10)
+    mass_scrape_target: Mapped[int] = mapped_column(Integer, default=500)
+    mass_fb_scroll_steps: Mapped[int] = mapped_column(Integer, default=100)
     facebook_groups: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
     portal_urls: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

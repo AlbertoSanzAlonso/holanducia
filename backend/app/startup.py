@@ -18,6 +18,7 @@ DEFAULT_FB_GROUPS = ["41757906864", "1018337428507491", "397742921612774"]
 
 MIGRATION_PGVECTOR = Path(__file__).resolve().parents[2] / "db" / "migrate_pgvector.sql"
 MIGRATION_SYNC = Path(__file__).resolve().parents[2] / "db" / "migrate_sync.sql"
+MIGRATION_MASS = Path(__file__).resolve().parents[2] / "db" / "migrate_mass_scrape.sql"
 
 
 async def _run_migration(path: Path, label: str) -> None:
@@ -40,12 +41,17 @@ async def _ensure_sync() -> None:
     await _run_migration(MIGRATION_SYNC, "sync")
 
 
+async def _ensure_mass_scrape() -> None:
+    await _run_migration(MIGRATION_MASS, "mass_scrape")
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     await _ensure_pgvector()
     await _ensure_sync()
+    await _ensure_mass_scrape()
 
     async with AsyncSessionLocal() as session:
         category_count = await session.scalar(select(func.count()).select_from(Category))

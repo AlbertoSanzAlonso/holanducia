@@ -11,8 +11,11 @@ export default function SettingsView() {
     min_size_m2: 60,
     portals: 'Facebook',
     max_leads_per_portal: 10,
+    mass_scrape_target: 500,
+    mass_fb_scroll_steps: 100,
     facebook_groups: []
   })
+  const [dbStats, setDbStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showFBModal, setShowFBModal] = useState(false)
@@ -22,6 +25,7 @@ export default function SettingsView() {
 
   useEffect(() => {
     fetchSettings()
+    api.getDatabaseStats().then(setDbStats).catch(() => {})
   }, [])
 
   const fetchSettings = async () => {
@@ -76,10 +80,29 @@ export default function SettingsView() {
     await api.createScrapingRequest({
       status: 'pending',
       source_name: 'Manual Trigger',
+      target_leads: settings.max_leads_per_portal || 10,
     })
 
-    setNotification('🚀 ¡Radar Activado! El robot está escaneando los grupos ahora mismo.')
+    setNotification('Radar rápido activado — cuota ' + (settings.max_leads_per_portal || 10) + ' anuncios.')
     setTimeout(() => setNotification(null), 5000)
+    setSaving(false)
+  }
+
+  const handleMassScrape = async () => {
+    setSaving(true)
+    await handleSave()
+
+    await api.createScrapingRequest({
+      status: 'pending',
+      source_name: 'mass_scrape',
+      target_leads: settings.mass_scrape_target || 500,
+    })
+
+    setNotification(
+      '🔄 Scraping MASIVO encolado — cuota ' + (settings.mass_scrape_target || 500) +
+      ' · compara todas las fuentes con la BD'
+    )
+    setTimeout(() => setNotification(null), 6000)
     setSaving(false)
   }
 
@@ -111,14 +134,24 @@ export default function SettingsView() {
           <h1 className="text-4xl font-black text-slate-900 tracking-tight">Configuración</h1>
           <p className="text-slate-400 text-sm mt-2 font-medium">Controla las fuentes y filtros de inteligencia</p>
         </div>
-        <button 
-          onClick={handleManualUpdate}
-          disabled={saving}
-          className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-500/20 active:scale-95 disabled:opacity-50"
-        >
-          <RefreshCw className={saving ? "animate-spin" : ""} size={18} />
-          Actualizar ahora
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button 
+            onClick={handleManualUpdate}
+            disabled={saving}
+            className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-4 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-500/20 active:scale-95 disabled:opacity-50"
+          >
+            <RefreshCw className={saving ? "animate-spin" : ""} size={18} />
+            Radar rápido
+          </button>
+          <button 
+            onClick={handleMassScrape}
+            disabled={saving}
+            className="flex-1 bg-[#0f172a] hover:bg-black text-white px-6 py-4 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-xl active:scale-95 disabled:opacity-50"
+          >
+            <RefreshCw className={saving ? "animate-spin" : ""} size={18} />
+            Scraping masivo
+          </button>
+        </div>
       </div>
       
       <div className="space-y-8 bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-200/50">
@@ -169,7 +202,58 @@ export default function SettingsView() {
 
         <div className="grid grid-cols-2 gap-6">
           <div>
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Precio Máximo (€)</label>
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Radar rápido (anuncios)</label>
+            <input 
+              type="number" 
+              value={settings.max_leads_per_portal || 10} 
+              onChange={(e) => setSettings({...settings, max_leads_per_portal: parseInt(e.target.value)})}
+              className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#00acee] focus:bg-white outline-none transition-all font-black text-blue-600"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Scraping masivo (cuota)</label>
+            <input 
+              type="number" 
+              value={settings.mass_scrape_target || 500} 
+              onChange={(e) => setSettings({...settings, mass_scrape_target: parseInt(e.target.value)})}
+              className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#0f172a] focus:bg-white outline-none transition-all font-black text-slate-900"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Scroll Facebook en modo masivo (pasos)</label>
+          <input 
+            type="number" 
+            value={settings.mass_fb_scroll_steps || 100} 
+            onChange={(e) => setSettings({...settings, mass_fb_scroll_steps: parseInt(e.target.value)})}
+            className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#0f172a] focus:bg-white outline-none transition-all font-bold"
+          />
+          <p className="text-xs text-slate-400 mt-2">Más pasos = más posts leídos por grupo. Recomendado: 100–150 para sync completo.</p>
+        </div>
+
+        {dbStats && (
+          <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estado de la base de datos</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+              <div><p className="text-2xl font-black text-slate-900">{dbStats.total_active}</p><p className="text-[10px] text-slate-400 uppercase">Activos</p></div>
+              <div><p className="text-2xl font-black text-slate-400">{dbStats.total_inactive}</p><p className="text-[10px] text-slate-400 uppercase">Bajas</p></div>
+              <div><p className="text-2xl font-black text-amber-600">{dbStats.stale_7d}</p><p className="text-[10px] text-slate-400 uppercase">Sin ver 7d</p></div>
+              <div><p className="text-2xl font-black text-blue-600">{dbStats.without_embedding}</p><p className="text-[10px] text-slate-400 uppercase">Sin vector</p></div>
+            </div>
+            {dbStats.last_sync?.stats && (
+              <p className="text-xs text-slate-500">
+                Último sync: +{dbStats.last_sync.stats.created || 0} creados · 
+                {dbStats.last_sync.stats.updated || 0} actualizados · 
+                {dbStats.last_sync.stats.deactivated || 0} bajas
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Precio máximo (€)</label>
             <input 
               type="number" 
               value={settings.max_price} 
@@ -178,17 +262,17 @@ export default function SettingsView() {
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Cuota de Oportunidades</label>
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-3">Habitaciones mín.</label>
             <input 
               type="number" 
-              value={settings.max_leads_per_portal || 10} 
-              onChange={(e) => setSettings({...settings, max_leads_per_portal: parseInt(e.target.value)})}
-              className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#00acee] focus:bg-white outline-none transition-all font-black text-blue-600"
+              value={settings.min_rooms || 2} 
+              onChange={(e) => setSettings({...settings, min_rooms: parseInt(e.target.value)})}
+              className="w-full px-6 py-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#00acee] focus:bg-white outline-none transition-all font-bold"
             />
           </div>
         </div>
 
-        <button 
+        <button
           onClick={handleSave}
           disabled={saving}
           className="w-full mt-4 bg-slate-900 hover:bg-black text-white font-black py-5 rounded-[2rem] shadow-2xl shadow-slate-900/20 flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 uppercase tracking-widest text-xs"

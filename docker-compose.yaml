@@ -80,7 +80,8 @@ services:
       SNIPER_BACKEND: crawl4ai
       DAILY_SYNC_ENABLED: "true"
       DAILY_SYNC_HOUR: "7"
-      DAILY_SYNC_TARGET: "200"
+      MASS_SCRAPE_TARGET: "500"
+      MASS_FB_SCROLL_STEPS: "100"
       PYTHONPATH: /app:/app/scrapers
       MEDIA_ROOT: /app/media/properties
     command: ["python", "scrapers/main.py"]

@@ -30,6 +30,7 @@ from backend.app.schemas import (
     SyncFinalizeResponse,
     SyncStartRequest,
     SyncStartResponse,
+    DatabaseStatsResponse,
 )
 from backend.app.services.vector_service import VectorService
 from backend.app.services.opportunity_service import OpportunityService
@@ -218,6 +219,11 @@ async def embed_backfill(limit: int = 100, db: AsyncSession = Depends(get_db)):
         return EmbedBackfillResponse(embedded=0, available=False)
     embedded = await service.backfill_missing(limit=min(limit, 500))
     return EmbedBackfillResponse(embedded=embedded, available=True)
+
+
+@router.get("/sync/stats", response_model=DatabaseStatsResponse)
+async def sync_database_stats(db: AsyncSession = Depends(get_db)):
+    return await SyncService(db).get_database_stats()
 
 
 @router.post("/sync/start", response_model=SyncStartResponse)

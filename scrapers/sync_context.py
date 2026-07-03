@@ -1,8 +1,10 @@
-"""Contexto de sync diario compartido entre scrapers y pipeline."""
+"""Contexto de sync diario y scraping masivo."""
 from contextvars import ContextVar
 from typing import Any, Dict, Optional, Set
 
 sync_mode: ContextVar[bool] = ContextVar("sync_mode", default=False)
+mass_mode: ContextVar[bool] = ContextVar("mass_mode", default=False)
+mass_fb_scroll_steps: ContextVar[int] = ContextVar("mass_fb_scroll_steps", default=100)
 
 
 class SyncSession:
@@ -32,6 +34,14 @@ sync_session: ContextVar[Optional[SyncSession]] = ContextVar("sync_session", def
 
 def is_sync_mode() -> bool:
     return sync_mode.get()
+
+
+def is_mass_mode() -> bool:
+    return mass_mode.get()
+
+
+def get_mass_fb_scroll_steps() -> int:
+    return mass_fb_scroll_steps.get()
 
 
 def get_sync_session() -> Optional[SyncSession]:
