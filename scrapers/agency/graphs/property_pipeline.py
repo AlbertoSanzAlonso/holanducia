@@ -4,9 +4,11 @@ from typing import Any, Callable, Coroutine, Dict, List
 from langgraph.graph import END, START, StateGraph
 
 from scrapers.agency.analyst import AnalystAgent
-from scrapers.agency.curator import CuratorAgent, make_lead_dedup_key
-from scrapers.portal_utils import is_facebook_post_url, resolve_lead_identity, external_id_from_url
-from scrapers.agency.types import CurateAction, PropertyPipelineState, RawLead
+from scrapers.agency.curator import CuratorAgent
+from scrapers.agency.persist import persist_supervised_leads
+from scrapers.agency.supervisor import SupervisorAgent
+from scrapers.fb_utils import enrich_lead_from_raw, is_quality_facebook_lead
+from scrapers.agency.types import PropertyPipelineState
 from scrapers.db_connector import DatabaseConnector
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ def build_property_pipeline(
 ):
     curator = CuratorAgent(connector, is_already_scraped)
     analyst = AnalystAgent()
+    supervisor = SupervisorAgent()
 
     async def curate_candidates(state: PropertyPipelineState) -> PropertyPipelineState:
         source = state.get("source", "Unknown")
@@ -43,15 +46,18 @@ def build_property_pipeline(
 
     async def analyze_approved(state: PropertyPipelineState) -> PropertyPipelineState:
         leads: List[Dict[str, Any]] = []
+        raw_text_map: Dict[str, str] = {}
         limit = state.get("limit", 50)
         source = state.get("source", "Unknown")
         rejected_non_real_estate = 0
+        rejected_low_quality = 0
 
         for item in state.get("approved", []):
             if len(leads) >= limit:
                 break
+            raw_text = item["raw_text"]
             ai_data = await analyst.parse_raw_text(
-                item["raw_text"],
+                raw_text,
                 source,
                 prequalified=(source == "Facebook"),
             )
@@ -59,7 +65,9 @@ def build_property_pipeline(
                 rejected_non_real_estate += 1
                 continue
             ai_data.pop("is_real_estate", None)
-            ai_data["_raw_dedup_key"] = item.get("dedup_key")
+            dedup_key = item.get("dedup_key")
+            ai_data["_raw_dedup_key"] = dedup_key
+            raw_text_map[dedup_key or ""] = raw_text
 
             meta = item.get("metadata") or {}
             post_url = item.get("url") or meta.get("url")
@@ -71,54 +79,47 @@ def build_property_pipeline(
             if source == "Facebook" and ai_data.get("is_individual") is None:
                 ai_data["is_individual"] = True
 
+            if source == "Facebook":
+                ai_data = enrich_lead_from_raw(ai_data, raw_text)
+                if not is_quality_facebook_lead(ai_data, raw_text):
+                    rejected_low_quality += 1
+                    logger.info(
+                        "PropertyPipeline [analyze]: pre-filtro calidad — %s",
+                        (ai_data.get("title") or raw_text[:60]),
+                    )
+                    continue
+
             leads.append(ai_data)
 
         stats = dict(state.get("stats") or {})
         stats["analyzed"] = len(leads)
         stats["rejected_non_real_estate"] = rejected_non_real_estate
+        stats["rejected_low_quality"] = rejected_low_quality
         logger.info(
-            "PropertyPipeline [analyze]: %s leads estructurados, %s descartados (no inmobiliario)",
+            "PropertyPipeline [analyze]: %s leads, %s no-inmobiliario, %s baja calidad",
             len(leads),
             rejected_non_real_estate,
+            rejected_low_quality,
         )
-        return {"leads": leads, "stats": stats}
+        return {"leads": leads, "stats": stats, "raw_text_map": raw_text_map}
 
     async def persist_leads(state: PropertyPipelineState) -> PropertyPipelineState:
-        saved = 0
-        skipped = state.get("skipped_count", 0)
-        base_url = state["base_url"]
-        limit = state.get("limit", 50)
-
-        for ai_data in state.get("leads", []):
-            if saved >= limit:
-                break
-
-            candidate_url = ai_data.get("url") or ""
-            if candidate_url and is_facebook_post_url(candidate_url):
-                dedup_key = external_id_from_url(candidate_url)
-            else:
-                dedup_key = make_lead_dedup_key(ai_data.get("title", ""), ai_data.get("price", 0))
-            url, external_id = resolve_lead_identity(ai_data, base_url)
-            ai_data["external_id"] = external_id
-            ai_data["url"] = url
-
-            decision = await curator.evaluate_lead(ai_data, url=url, dedup_key=dedup_key)
-            if decision["action"] != CurateAction.NEW.value:
-                skipped += 1
-                logger.debug("Curator descartó lead (%s): %s", decision["reason"], url)
-                continue
-
-            if await persist_lead(ai_data, base_url):
-                saved += 1
-                await mark_as_scraped(url)
-                raw_key = ai_data.pop("_raw_dedup_key", None)
-                if raw_key:
-                    await mark_as_scraped(raw_key)
-                logger.info("PropertyPipeline [persist]: %s", ai_data.get("title"))
+        saved, skipped, persist_stats = await persist_supervised_leads(
+            state.get("leads", []),
+            source=state.get("source", "Unknown"),
+            base_url=state["base_url"],
+            limit=state.get("limit", 50),
+            connector=connector,
+            curator=curator,
+            supervisor=supervisor,
+            persist_lead=persist_lead,
+            mark_as_scraped=mark_as_scraped,
+            raw_text_by_key=state.get("raw_text_map") or {},
+            skipped=state.get("skipped_count", 0),
+        )
 
         stats = dict(state.get("stats") or {})
-        stats["saved"] = saved
-        stats["duplicates"] = skipped
+        stats.update(persist_stats)
         return {"saved_count": saved, "skipped_count": skipped, "stats": stats}
 
     def route_after_curate(state: PropertyPipelineState):
@@ -162,6 +163,7 @@ async def run_property_pipeline(
         "skipped_count": 0,
         "limit": limit,
         "stats": {},
+        "raw_text_map": {},
     }
     return await graph.ainvoke(initial)
 
@@ -177,44 +179,34 @@ async def run_structured_leads_pipeline(
     is_already_scraped: DedupCheckFn,
     mark_as_scraped: MarkScrapedFn,
 ) -> PropertyPipelineState:
-    """Para portales: leads ya extraídos por parse_bulk_text → Curator → Persist."""
+    """Portales: leads estructurados → Supervisor → Postgres + vector."""
     curator = CuratorAgent(connector, is_already_scraped)
-    saved = 0
-    skipped = 0
+    supervisor = SupervisorAgent()
 
-    for lead in leads:
-        if saved >= limit:
-            break
-
-        dedup_key = make_lead_dedup_key(lead.get("title", ""), lead.get("price", 0))
-        url, external_id = resolve_lead_identity(lead, base_url)
-        lead = dict(lead)
-        lead["external_id"] = external_id
-        lead["url"] = url
-        lead["source"] = source
-
-        decision = await curator.evaluate_lead(lead, url=url, dedup_key=dedup_key)
-        if decision["action"] != CurateAction.NEW.value:
-            skipped += 1
-            continue
-
-        if await persist_lead(lead, base_url):
-            saved += 1
-            await mark_as_scraped(url)
+    saved, skipped, persist_stats = await persist_supervised_leads(
+        leads,
+        source=source,
+        base_url=base_url,
+        limit=limit,
+        connector=connector,
+        curator=curator,
+        supervisor=supervisor,
+        persist_lead=persist_lead,
+        mark_as_scraped=mark_as_scraped,
+    )
 
     stats: Dict[str, Any] = {
         "raw_in": len(leads),
         "curated_out": saved,
-        "duplicates": skipped,
         "analyzed": len(leads),
-        "saved": saved,
+        **persist_stats,
     }
     logger.info(
-        "StructuredPipeline [%s]: %s guardados, %s duplicados de %s",
+        "StructuredPipeline [%s]: %s guardados, %s rechazados supervisor, %s duplicados",
         source,
         saved,
+        persist_stats.get("rejected_supervisor", 0),
         skipped,
-        len(leads),
     )
     return {
         "source": source,

@@ -39,8 +39,9 @@ class AnalystAgent:
         prequalified_note = ""
         if prequalified:
             prequalified_note = """
-        NOTA: Post de grupo Facebook (Málaga/ Costa del Sol). Extrae TODO lo que aparezca en el texto.
-        is_real_estate=true salvo spam evidente. is_individual=true si parece particular.
+        NOTA: Post de grupo Facebook inmobiliario. Extrae datos SOLO si es un anuncio de vivienda.
+        is_real_estate=false si es: productos, servicios, restaurantes, empleo, conversación general, spam.
+        is_real_estate=true SOLO si ofrece/busca/alquila/vende una vivienda o local.
         """
 
         prompt = f"""
@@ -48,19 +49,19 @@ class AnalystAgent:
         Analiza el siguiente texto de {source} y extrae los datos de la propiedad.
         {prequalified_note}
         REGLAS DE ORO:
-        1. TÍTULO: Profesional, específico (zona + tipo + habitaciones). NUNCA vacío.
-        2. PRECIO: Número en euros. Si dice 1800/mes es alquiler — indícalo en description.
-        3. CIUDAD/BARRIO: Extrae del texto; si no hay, usa "Málaga".
-        4. DESCRIPTION: Copia datos clave del anuncio (m², planta, extras, contacto).
-        5. size_m2, rooms, bathrooms: extrae si aparecen (null si no).
+        1. TÍTULO: Profesional, específico (zona + tipo + habitaciones). NUNCA genérico tipo "Propiedad en X".
+        2. PRECIO: Número en euros del anuncio. Si no hay precio explícito, pon 0 (no inventes).
+        3. CIUDAD/BARRIO: Extrae del texto; si no hay ciudad clara, null (no asumas Málaga).
+        4. DESCRIPTION: Texto completo del anuncio con m², planta, extras, contacto. Copia el post literalmente.
+        5. size_m2, rooms, bathrooms: extrae solo si aparecen explícitamente (null si no).
 
         Devuelve SOLO un JSON:
         {{
             "title": "título profesional",
             "price": número,
-            "city": "ciudad",
+            "city": "ciudad o null",
             "neighborhood": "barrio o null",
-            "description": "descripción completa",
+            "description": "descripción completa del post",
             "rooms": número o null,
             "bathrooms": número o null,
             "size_m2": número o null,
@@ -129,17 +130,14 @@ class AnalystAgent:
                 
                 if not is_bulk:
                     if not data.get("is_real_estate", True):
-                        if prequalified:
-                            logger.info(
-                                "Post prequalified (keywords FB) — Analyst dijo no-inmobiliario; extrayendo igual."
-                            )
-                            data["is_real_estate"] = True
-                        else:
-                            logger.warning("🚫 Clasificado como NO inmobiliario por IA.")
-                            return None
+                        logger.warning("🚫 Clasificado como NO inmobiliario por IA.")
+                        return None
                     # Asegurar título
                     if not data.get("title") or data["title"] == "None":
-                        data["title"] = f"Propiedad en {data.get('city', 'Málaga')}"
+                        city = data.get("city") or "Málaga"
+                        data["title"] = f"Propiedad en {city}"
+                    if not data.get("city"):
+                        data["city"] = "Málaga"
                     data["price"] = self._clean_price(data.get("price"))
                     if not isinstance(data.get("images"), list):
                         data["images"] = []

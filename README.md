@@ -97,11 +97,28 @@ Logs útiles: `docker compose logs -f worker` — busca `Scroll paso`, `con enla
 
 ## Inteligencia y scraping
 
-- **Facebook**: Playwright + LangGraph (`facebook_scraper.py`, `facebook_graph.py`)
-- **Portales**: Crawl4AI/Firecrawl — URLs reales de anuncio + fotos del listado
-- **Agentes**: Hunter → Curator (Redis + BD + pgvector) → Analyst (Groq) → Persist
+Pipeline agéntico por anuncio:
+
+```
+Raw → Curator (dedup) → Analyst (extracción) → Supervisor (validación IA) → Persist
+                                                      ↓
+                              Postgres (properties) + pgvector (property_embeddings)
+```
+
+| Agente | Rol |
+|--------|-----|
+| **Curator** | Dedup Redis + BD + similitud vectorial |
+| **Analyst** | Groq → JSON estructurado (precio, habitaciones, m²…) |
+| **Supervisor** | Valida cada anuncio antes de guardar; rechaza spam/no-inmobiliario |
+| **Hunter/Scout** | Descubrimiento en portales y Facebook |
+
+- **Facebook**: Playwright + LangGraph — solo posts con calidad mínima
+- **Portales**: Crawl4AI/Firecrawl — URLs reales + fotos
+- **Persistencia**: `POST /api/properties` → Postgres + embedding automático en `property_embeddings`
 - **Worker**: polling a `/api/scraping-requests/pending`
-- **Trigger manual**: Frontend → Configuración → "Actualizar ahora"
+- **Trigger**: Configuración → "Actualizar ahora"
+
+Requiere `OPENAI_API_KEY` en el servicio **api** (embeddings vectoriales) y `GROQ_API_KEY` en **worker** (Analyst/Supervisor).
 
 ---
 

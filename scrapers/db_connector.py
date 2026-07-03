@@ -25,6 +25,34 @@ class DatabaseConnector:
             response.raise_for_status()
             return response.json()
 
+    async def upsert_property_with_embedding(self, property_data: Dict[str, Any]) -> bool:
+        """Guarda en Postgres vía API y asegura embedding vectorial para consultas."""
+        try:
+            result = await self.upsert_property(property_data)
+            prop_id = result.get("id")
+            if not prop_id:
+                return False
+
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                embed_resp = await client.post(f"{self.api_url}/api/properties/{prop_id}/embed")
+                if embed_resp.status_code == 200:
+                    logger.info("Postgres + vector OK — property #%s", prop_id)
+                elif embed_resp.status_code == 503:
+                    logger.warning(
+                        "Postgres OK, vector omitido (OPENAI_API_KEY no configurada) — #%s",
+                        prop_id,
+                    )
+                else:
+                    logger.warning(
+                        "Postgres OK, embedding falló (%s): %s",
+                        embed_resp.status_code,
+                        embed_resp.text[:200],
+                    )
+            return True
+        except Exception as e:
+            logger.error("upsert_property_with_embedding falló: %s", e)
+            return False
+
     async def analyze_property(self, property_data: Dict[str, Any], market_avg: float):
         score = 0
         reasons = []

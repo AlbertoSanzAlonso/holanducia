@@ -12,7 +12,7 @@ description: Arquitectura y despliegue de HolanducIA. Usar siempre que trabajes 
     │  /api/* → proxy vercel.json → VPS:9000
     ▼
 [VPS Hetzner + Coolify]  docker compose
-    ├── api        FastAPI :9000 (público)
+    ├── api        FastAPI :9000 (público) + embeddings pgvector
     ├── worker     scrapers/main.py (Playwright FB + Crawl4AI portales)
     ├── postgres   pgvector/pgvector:pg16
     └── redis      deduplicación URLs/hashes
@@ -36,9 +36,9 @@ description: Arquitectura y despliegue de HolanducIA. Usar siempre que trabajes 
 ### VPS `.env` (Coolify — worker + api)
 
 ```
-GROQ_API_KEY=...
+GROQ_API_KEY=...              # worker: Analyst + Supervisor
+OPENAI_API_KEY=...            # api: embeddings pgvector (OBLIGATORIO para vector)
 FIRECRAWL_API_KEY=...
-OPENAI_API_KEY=...          # embeddings pgvector (opcional)
 
 # Facebook (worker)
 FB_USER=...
@@ -61,45 +61,43 @@ curl http://localhost:9000/api/properties
 
 Puerto **9000** expuesto para la API. Tras cambiar env en Coolify → **Redeploy worker**.
 
-## Pipeline de scraping
+## Pipeline por anuncio
 
-1. Frontend → `POST /api/scraping-requests` (Configuración → Actualizar ahora)
+```
+Raw → Curator → Analyst → Supervisor → Persist (Postgres + property_embeddings)
+```
+
+1. Frontend → `POST /api/scraping-requests`
 2. Worker → `GET /api/scraping-requests/pending`
-3. `DirectorAgent` → Facebook + portales
-4. Persist → `POST /api/properties` + embeddings pgvector
+3. Por cada anuncio: Curator → Analyst → **Supervisor** → Persist
+4. API guarda en `properties` + embedding en `property_embeddings`
 
 ## Facebook (`scrapers/facebook_scraper.py`)
 
-Flujo LangGraph (`facebook_graph.py` → `property_pipeline.py`):
-
-1. Playwright entra al grupo con `FB_SESSION_B64` o login
-2. Scroll (`FB_SCROLL_STEPS`, default 55) + expand "Ver más"
-3. `EXTRACT_POSTS_JS` → `{text, url, images[]}` por `div[role="article"]`
-4. Filtro keywords → Curator (dedup por URL post) → Analyst → Persist
+1. Playwright + `FB_SESSION_B64` + scroll
+2. `EXTRACT_POSTS_JS` → `{text, url, images[]}`
+3. Filtro `fb_utils` → Curator → Analyst → **Supervisor** → Persist
 
 **Sesión FB:** `python scrapers/export_fb_session.py` → copiar `FB_SESSION_B64` a Coolify.
 
 URLs válidas de lead FB: `/posts/`, `/permalink/`, `story_fbid` — ver `portal_utils.is_facebook_post_url()`.
 
-Fotos: CDN `scontent`/`fbcdn` del DOM; Analyst no debe sobrescribirlas con placeholders.
-
-Posts prequalified (keywords FB): si Analyst dice `is_real_estate: false`, el pipeline confía en el filtro previo.
+Fotos: CDN `scontent`/`fbcdn` del DOM.
 
 ## Portales (Crawl4AI / Firecrawl)
 
-- URLs reales de anuncio vía `portal_utils.extract_listing_urls` + Hunter
-- Fotos del listado vía `image_utils` — no inventar URLs `#lead-`
-- `resolve_lead_identity()` solo acepta URLs de detalle o post FB
+- URLs reales + fotos → mismo pipeline con **Supervisor**
 
 ## Agentes (`scrapers/agency/`)
 
-| Agente | Rol |
-|--------|-----|
-| Hunter | Descubre URLs en portales |
-| Scout | Diagnóstico FB + fallback IA si DOM vacío |
-| Curator | Redis + BD + similitud vectorial; raw dicts `{text,url,images}` |
-| Analyst | Groq/OpenAI → JSON (city, neighborhood, size_m2, bathrooms…) |
-| Director | Orquesta misiones |
+| Agente | Archivo | Rol |
+|--------|---------|-----|
+| Hunter | `hunter.py` | URLs en portales |
+| Scout | `scout.py` | Diagnóstico FB |
+| Curator | `curator.py` | Dedup Redis + BD + vectorial |
+| Analyst | `analyst.py` | Extracción JSON |
+| **Supervisor** | `supervisor.py` | **Validación IA final por anuncio** |
+| Director | `director.py` | Orquestación |
 
 ## Debugging producción
 
@@ -107,10 +105,8 @@ Posts prequalified (keywords FB): si Analyst dice `is_real_estate: false`, el pi
 |---------|----------------|
 | Frontend vacío en Vercel | Mixed Content — usar proxy `vercel.json`, no `VITE_API_URL` HTTP |
 | Worker 500 en `/pending` | Tabla `scraping_requests` — reiniciar API / `startup.py` |
-| FB 0 leads, login OK | Pocos posts — subir `FB_SCROLL_STEPS`; revisar keywords/Analyst |
-| FB sin foto/enlace | Worker sin redeploy tras cambios en `EXTRACT_POSTS_JS` |
-| FB login_required | Regenerar `FB_SESSION_B64` con `export_fb_session.py` |
-| Sin embeddings | Falta `OPENAI_API_KEY` en VPS |
+| Leads basura guardados | Supervisor rechazando — redeploy worker + api |
+| Sin embeddings / similitud | `OPENAI_API_KEY` en servicio **api** |
 | "Ver anuncio" al listado | URL falsa `#lead-` — corregir en Hunter/portal_utils |
 
 ## Comandos útiles

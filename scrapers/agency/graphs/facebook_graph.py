@@ -7,15 +7,9 @@ from scrapers.agency.graphs.property_pipeline import run_property_pipeline
 from scrapers.agency.scout import ScoutAgent
 from scrapers.db_connector import DatabaseConnector
 
-logger = logging.getLogger(__name__)
+from scrapers.fb_utils import looks_like_real_estate
 
-REAL_ESTATE_KEYWORDS = [
-    "piso", "casa", "vivienda", "alquiler", "vendo", "venta", "chalet", "inmueble",
-    "hab", "dorm", "baño", "estudio", "loft", "duplex", "finca", "apartamento",
-    "€", "euro", "precio", "m2", "m²", "particular", "inmobiliaria", "comunidad",
-    "se alquila", "se vende", "ático", "atico", "garaje", "terreno", "local",
-    "reformado", "amueblado", "oportunidad", "urgente",
-]
+logger = logging.getLogger(__name__)
 
 FacebookPost = Dict[str, Any]
 
@@ -109,21 +103,14 @@ def build_facebook_graph(
         posts = state.get("posts", [])
         candidates = [
             p for p in posts
-            if any(k in _post_text(p).lower() for k in REAL_ESTATE_KEYWORDS)
+            if looks_like_real_estate(_post_text(p))
         ]
 
-        if not candidates and posts:
-            candidates = sorted(posts, key=lambda p: len(_post_text(p)), reverse=True)[:20]
-            logger.info(
-                "LangGraph [filter]: sin keywords — enviando %s posts al Analyst",
-                len(candidates),
-            )
-        else:
-            logger.info(
-                "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",
-                len(candidates),
-                len(posts),
-            )
+        logger.info(
+            "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",
+            len(candidates),
+            len(posts),
+        )
 
         stats = dict(state.get("stats") or {})
         stats.update({"posts_total": len(posts), "keyword_candidates": len(candidates)})

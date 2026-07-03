@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import List, Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update, delete
@@ -27,6 +28,7 @@ from backend.app.services.vector_service import VectorService
 from backend.app.services.opportunity_service import OpportunityService
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 
 PROPERTY_FIELDS = {
     "external_id", "url", "source", "title", "price", "city", "neighborhood", "address",
@@ -78,8 +80,8 @@ async def upsert_property(payload: PropertyCreate, db: AsyncSession = Depends(ge
         await db.refresh(existing)
         try:
             await VectorService(db).upsert_property_embedding(existing)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Embedding falló al actualizar property #%s: %s", existing.id, e)
         return existing
 
     prop = Property(**data)
@@ -89,8 +91,8 @@ async def upsert_property(payload: PropertyCreate, db: AsyncSession = Depends(ge
 
     try:
         await VectorService(db).upsert_property_embedding(prop)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Embedding falló al crear property #%s: %s", prop.id, e)
 
     return prop
 

@@ -30,6 +30,9 @@ class PipelineStats(TypedDict, total=False):
     duplicates: int
     analyzed: int
     saved: int
+    rejected_supervisor: int
+    rejected_non_real_estate: int
+    rejected_low_quality: int
 
 
 class PropertyPipelineState(TypedDict, total=False):
@@ -38,6 +41,7 @@ class PropertyPipelineState(TypedDict, total=False):
     raw_candidates: List[Any]
     approved: List[RawLead]
     leads: List[Dict[str, Any]]
+    raw_text_map: Dict[str, str]
     saved_count: int
     skipped_count: int
     limit: int
