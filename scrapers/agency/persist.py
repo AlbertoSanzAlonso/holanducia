@@ -1,4 +1,4 @@
-"""Persistencia unificada: Postgres (API) + embedding vectorial."""
+"""Persistencia unificada: Postgres (API) + embedding vectorial + sync diario."""
 import logging
 from typing import Any, Callable, Coroutine, Dict, Optional
 
@@ -7,6 +7,8 @@ from scrapers.agency.supervisor import SupervisorAgent
 from scrapers.agency.types import CurateAction
 from scrapers.db_connector import DatabaseConnector
 from scrapers.portal_utils import external_id_from_url, is_facebook_post_url, resolve_lead_identity
+from scrapers.sync_context import get_sync_session
+from scrapers.sync_utils import content_hash
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +31,14 @@ async def persist_supervised_leads(
     skipped: int = 0,
 ) -> tuple[int, int, Dict[str, int]]:
     saved = 0
+    updated = 0
+    unchanged = 0
     rejected_supervisor = 0
     raw_text_by_key = raw_text_by_key or {}
+    session = get_sync_session()
 
     for lead in leads:
-        if saved >= limit:
+        if saved + updated + unchanged >= limit and not session:
             break
 
         lead = dict(lead)
@@ -56,30 +61,56 @@ async def persist_supervised_leads(
         lead["external_id"] = external_id
         lead["url"] = url
         lead["source"] = source
+        lead["content_hash"] = content_hash(lead)
 
         decision = await curator.evaluate_lead(lead, url=url, dedup_key=dedup_key)
-        if decision["action"] != CurateAction.NEW.value:
+        action = decision["action"]
+
+        if action == CurateAction.UPDATE.value:
+            existing = await connector.get_property_by_url(url)
+            if existing and existing.get("content_hash") == lead["content_hash"]:
+                unchanged += 1
+                if session:
+                    session.record_seen(url)
+                    session.bump("unchanged")
+                await mark_as_scraped(url)
+                logger.debug("Sync sin cambios: %s", url)
+                continue
+
+            if await connector.upsert_property_with_embedding(lead):
+                updated += 1
+                if session:
+                    session.record_seen(url)
+                    session.bump("updated")
+                await mark_as_scraped(url)
+                logger.info("Sync actualizado: %s", lead.get("title"))
+            else:
+                skipped += 1
+            continue
+
+        if action != CurateAction.NEW.value:
             skipped += 1
             logger.debug("Curator descartó lead (%s): %s", decision["reason"], url)
             continue
 
         if await connector.upsert_property_with_embedding(lead):
             saved += 1
+            if session:
+                session.record_seen(url)
+                session.bump("created")
             await mark_as_scraped(url)
             if raw_key:
                 await mark_as_scraped(raw_key)
-            logger.info(
-                "Persist [Postgres+vector]: %s (score=%s)",
-                lead.get("title"),
-                review.get("quality_score"),
-            )
+            logger.info("Persist [Postgres+vector]: %s", lead.get("title"))
         else:
             skipped += 1
-            logger.error("Fallo persistencia: %s", lead.get("title"))
 
     stats = {
         "saved": saved,
+        "updated": updated,
+        "unchanged": unchanged,
         "duplicates": skipped,
         "rejected_supervisor": rejected_supervisor,
+        "created": saved,
     }
-    return saved, skipped, stats
+    return saved + updated, skipped, stats

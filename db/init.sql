@@ -32,8 +32,20 @@ CREATE TABLE properties (
     category_id INTEGER REFERENCES categories(id),
     catastro_ref VARCHAR(100),
     year_built INTEGER,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+    content_hash VARCHAR(64),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sync_runs (
+    id SERIAL PRIMARY KEY,
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    status VARCHAR(50) DEFAULT 'running',
+    sources TEXT[] DEFAULT ARRAY[]::TEXT[],
+    stats JSONB DEFAULT '{}'::jsonb
 );
 
 CREATE TABLE user_settings (

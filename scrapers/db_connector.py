@@ -149,6 +149,44 @@ class DatabaseConnector:
             except Exception as e:
                 logger.error("Failed to report scraping status: %s", e)
 
+    async def get_property_by_url(self, url: str) -> Optional[Dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(
+                    f"{self.api_url}/api/properties/by-url",
+                    params={"url": url},
+                )
+                if response.status_code == 200:
+                    return response.json()
+            except Exception as e:
+                logger.debug("get_property_by_url falló: %s", e)
+        return None
+
+    async def start_sync_run(self, sources: List[str]) -> int:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.api_url}/api/sync/start",
+                json={"sources": sources},
+            )
+            response.raise_for_status()
+            return response.json()["sync_run_id"]
+
+    async def finalize_sync_run(
+        self,
+        sync_run_id: int,
+        *,
+        seen_urls: List[str],
+        sources: List[str],
+        stats: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{self.api_url}/api/sync/{sync_run_id}/finalize",
+                json={"seen_urls": seen_urls, "sources": sources, "stats": stats},
+            )
+            response.raise_for_status()
+            return response.json()
+
 
 def build_portal_urls(settings: Optional[Dict[str, Any]]) -> List[str]:
     settings = settings or {}

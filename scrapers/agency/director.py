@@ -7,6 +7,7 @@ from scrapers.agency.hunter import HunterAgent
 from scrapers.db_connector import DatabaseConnector, build_portal_urls
 from scrapers.facebook_scraper import FacebookScraper
 from scrapers.portal_utils import prioritize_portal_urls
+from scrapers.sync_context import SyncSession, sync_mode, sync_session
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +42,25 @@ class DirectorAgent:
 
         return list(dict.fromkeys(discovered))
 
+    def _collect_sources(self, fb_groups: list, portal_urls: list) -> List[str]:
+        sources: List[str] = []
+        if fb_groups:
+            sources.append("Facebook")
+        for url in portal_urls:
+            host = url.split("//")[-1].split("/")[0].replace("www.", "")
+            if host and host not in sources:
+                sources.append(host)
+        return sources
+
     async def execute_mission(self, request: Dict[str, Any] = None):
         settings = await self.db.get_settings() or {}
-
         res = request or {}
+
+        is_daily = res.get("source_name") == "daily_sync"
         quota = res.get("target_leads") or settings.get("target_leads") or settings.get("max_leads_per_portal") or 10
+        if is_daily:
+            quota = int(os.getenv("DAILY_SYNC_TARGET", res.get("target_leads") or 200))
+
         fb_groups = res.get("groups") or settings.get("facebook_groups") or settings.get("groups")
         portal_urls = res.get("portal_urls") or build_portal_urls(settings)
 
@@ -57,10 +72,7 @@ class DirectorAgent:
             logger.info("Usando grupos por defecto del escuadron.")
 
         if isinstance(fb_groups, str):
-            if "," in fb_groups:
-                fb_groups = [g.strip() for g in fb_groups.split(",")]
-            else:
-                fb_groups = [fb_groups.strip()]
+            fb_groups = [g.strip() for g in fb_groups.split(",")] if "," in fb_groups else [fb_groups.strip()]
         elif not isinstance(fb_groups, list):
             fb_groups = [str(fb_groups)] if fb_groups else []
 
@@ -70,9 +82,24 @@ class DirectorAgent:
             logger.info("Director: %s urls de portales (listados + Hunter)", len(portal_urls))
 
         portal_urls = prioritize_portal_urls(portal_urls)
+        sources = self._collect_sources(fb_groups, portal_urls)
+
+        session: SyncSession | None = None
+        if is_daily:
+            sync_mode.set(True)
+            sync_run_id = await self.db.start_sync_run(sources)
+            session = SyncSession(sync_run_id, sources)
+            sync_session.set(session)
+            logger.info(
+                "Sync diario #%s — %s fuentes, objetivo %s anuncios",
+                sync_run_id,
+                len(sources),
+                quota,
+            )
 
         logger.info(
-            "Iniciando mision. Objetivo: %s leads. Fuentes: %s grupos FB, %s portales Sniper.",
+            "Iniciando mision%s. Objetivo: %s. Fuentes: %s grupos FB, %s portales.",
+            " (sync diario)" if is_daily else "",
             quota,
             len(fb_groups),
             len(portal_urls),
@@ -80,38 +107,56 @@ class DirectorAgent:
 
         total_captured = 0
         attempts = 0
-        max_attempts = 5
+        max_attempts = 5 if not is_daily else 3
 
-        while total_captured < quota and attempts < max_attempts:
-            attempts += 1
-            if attempts > 1:
-                logger.info("Objetivo no alcanzado (%s/%s). Pasando siguiente ronda...", total_captured, quota)
-                await asyncio.sleep(60)
+        try:
+            while total_captured < quota and attempts < max_attempts:
+                attempts += 1
+                if attempts > 1:
+                    logger.info("Ronda %s — %s/%s leads", attempts, total_captured, quota)
+                    await asyncio.sleep(60 if not is_daily else 30)
 
-            if fb_groups:
-                import random
+                if fb_groups:
+                    import random
 
-                random.shuffle(fb_groups)
-                scraper = FacebookScraper(fb_groups[0], limit=(quota - total_captured))
-                total_captured += await scraper.scrape_multiple(fb_groups)
+                    random.shuffle(fb_groups)
+                    scraper = FacebookScraper(fb_groups[0], limit=(quota - total_captured))
+                    total_captured += await scraper.scrape_multiple(fb_groups)
 
-            if portal_urls and total_captured < quota:
-                backend = os.getenv("SNIPER_BACKEND", "crawl4ai").lower()
-                logger.info("Activando Modo Francotirador (%s) sobre %s portales...", backend, len(portal_urls))
+                if portal_urls and total_captured < quota:
+                    backend = os.getenv("SNIPER_BACKEND", "crawl4ai").lower()
+                    logger.info("Modo Sniper (%s) — %s portales", backend, len(portal_urls))
 
-                if backend == "firecrawl":
-                    from scrapers.firecrawl_sniper import FirecrawlSniper
+                    if backend == "firecrawl":
+                        from scrapers.firecrawl_sniper import FirecrawlSniper
 
-                    sniper = FirecrawlSniper(limit=(quota - total_captured))
-                else:
-                    from scrapers.crawl4ai_sniper import Crawl4AISniper
+                        sniper = FirecrawlSniper(limit=(quota - total_captured))
+                    else:
+                        from scrapers.crawl4ai_sniper import Crawl4AISniper
 
-                    sniper = Crawl4AISniper(limit=(quota - total_captured))
+                        sniper = Crawl4AISniper(limit=(quota - total_captured))
 
-                total_captured += await sniper.scrape_portals(portal_urls)
+                    total_captured += await sniper.scrape_portals(portal_urls)
 
-            if total_captured >= quota:
-                break
+                if total_captured >= quota:
+                    break
+        finally:
+            if session:
+                result = await self.db.finalize_sync_run(
+                    session.sync_run_id,
+                    seen_urls=list(session.seen_urls),
+                    sources=session.sources,
+                    stats=session.stats,
+                )
+                logger.info(
+                    "Sync diario completado — creados=%s actualizados=%s sin_cambios=%s dados_de_baja=%s",
+                    session.stats.get("created", 0),
+                    session.stats.get("updated", 0),
+                    session.stats.get("unchanged", 0),
+                    result.get("deactivated", 0),
+                )
+                sync_mode.set(False)
+                sync_session.set(None)
 
-        logger.info("Director: mision cerrada con %s leads totales.", total_captured)
+        logger.info("Director: mision cerrada con %s leads procesados.", total_captured)
         return total_captured

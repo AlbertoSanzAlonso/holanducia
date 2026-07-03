@@ -6,6 +6,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 from scrapers.agency.types import CurateAction, CurateResult, RawLead
 from scrapers.db_connector import DatabaseConnector
 from scrapers.fb_utils import looks_like_real_estate
+from scrapers.sync_context import is_sync_mode
 
 logger = logging.getLogger(__name__)
 
@@ -57,32 +58,33 @@ class CuratorAgent:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> CurateResult:
         dedup_key = make_dedup_key(post_url or raw_text, prefix="fb" if post_url else "raw")
-        if post_url and await self.is_already_scraped(post_url):
-            return {
-                "action": CurateAction.DUPLICATE.value,
-                "raw_lead": {
-                    "source": source,
-                    "raw_text": raw_text,
-                    "dedup_key": dedup_key,
-                    "base_url": base_url,
-                    "url": post_url,
-                    "metadata": metadata or {},
-                },
-                "reason": "redis_post_url",
-            }
-        if await self.is_already_scraped(dedup_key):
-            return {
-                "action": CurateAction.DUPLICATE.value,
-                "raw_lead": {
-                    "source": source,
-                    "raw_text": raw_text,
-                    "dedup_key": dedup_key,
-                    "base_url": base_url,
-                    "url": post_url,
-                    "metadata": metadata or {},
-                },
-                "reason": "redis_raw_hash",
-            }
+        if not is_sync_mode():
+            if post_url and await self.is_already_scraped(post_url):
+                return {
+                    "action": CurateAction.DUPLICATE.value,
+                    "raw_lead": {
+                        "source": source,
+                        "raw_text": raw_text,
+                        "dedup_key": dedup_key,
+                        "base_url": base_url,
+                        "url": post_url,
+                        "metadata": metadata or {},
+                    },
+                    "reason": "redis_post_url",
+                }
+            if await self.is_already_scraped(dedup_key):
+                return {
+                    "action": CurateAction.DUPLICATE.value,
+                    "raw_lead": {
+                        "source": source,
+                        "raw_text": raw_text,
+                        "dedup_key": dedup_key,
+                        "base_url": base_url,
+                        "url": post_url,
+                        "metadata": metadata or {},
+                    },
+                    "reason": "redis_raw_hash",
+                }
 
         return {
             "action": CurateAction.NEW.value,
@@ -114,6 +116,12 @@ class CuratorAgent:
             }
 
         if url in (self._known_urls or set()):
+            if is_sync_mode():
+                return {
+                    "action": CurateAction.UPDATE.value,
+                    "raw_lead": {"url": url, "dedup_key": dedup_key},
+                    "reason": "sync_update_existing",
+                }
             return {
                 "action": CurateAction.DUPLICATE.value,
                 "raw_lead": {"url": url, "dedup_key": dedup_key},

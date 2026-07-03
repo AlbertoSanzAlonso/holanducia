@@ -23,9 +23,14 @@ from backend.app.schemas import (
     SettingsUpdate,
     SimilarPropertyMatch,
     SimilarPropertyRequest,
+    SyncFinalizeRequest,
+    SyncFinalizeResponse,
+    SyncStartRequest,
+    SyncStartResponse,
 )
 from backend.app.services.vector_service import VectorService
 from backend.app.services.opportunity_service import OpportunityService
+from backend.app.services.sync_service import SyncService, compute_content_hash
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -35,6 +40,7 @@ PROPERTY_FIELDS = {
     "size_m2", "rooms", "bathrooms", "has_parking", "has_terrace", "has_pool",
     "is_individual", "is_agency", "description", "images", "opportunity_score",
     "opportunity_reasons", "category_id", "catastro_ref", "year_built",
+    "is_active", "last_seen_at", "content_hash",
 }
 
 
@@ -61,14 +67,26 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/properties", response_model=List[PropertyOut])
-async def list_properties(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Property).order_by(Property.created_at.desc()))
+async def list_properties(active_only: bool = True, db: AsyncSession = Depends(get_db)):
+    query = select(Property).order_by(Property.created_at.desc())
+    if active_only:
+        query = query.where(Property.is_active.is_(True))
+    result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/properties/by-url", response_model=Optional[PropertyOut])
+async def get_property_by_url(url: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Property).where(Property.url == url))
+    return result.scalar_one_or_none()
 
 
 @router.post("/properties", response_model=PropertyOut)
 async def upsert_property(payload: PropertyCreate, db: AsyncSession = Depends(get_db)):
     data = apply_opportunity_score(payload.model_dump())
+    data["content_hash"] = compute_content_hash(data)
+    data["is_active"] = True
+    data["last_seen_at"] = datetime.now(timezone.utc)
     result = await db.execute(select(Property).where(Property.url == data["url"]))
     existing = result.scalar_one_or_none()
 
@@ -187,6 +205,32 @@ async def embed_backfill(limit: int = 100, db: AsyncSession = Depends(get_db)):
         return EmbedBackfillResponse(embedded=0, available=False)
     embedded = await service.backfill_missing(limit=min(limit, 500))
     return EmbedBackfillResponse(embedded=embedded, available=True)
+
+
+@router.post("/sync/start", response_model=SyncStartResponse)
+async def sync_start(payload: SyncStartRequest, db: AsyncSession = Depends(get_db)):
+    run = await SyncService(db).start_run(payload.sources)
+    return SyncStartResponse(sync_run_id=run.id, status=run.status)
+
+
+@router.post("/sync/{sync_run_id}/finalize", response_model=SyncFinalizeResponse)
+async def sync_finalize(
+    sync_run_id: int,
+    payload: SyncFinalizeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await SyncService(db).finalize_run(
+        sync_run_id,
+        seen_urls=set(payload.seen_urls),
+        sources=payload.sources,
+        stats=payload.stats,
+    )
+    return SyncFinalizeResponse(
+        deactivated=result.get("deactivated", 0),
+        created=result.get("created", 0),
+        updated=result.get("updated", 0),
+        unchanged=result.get("unchanged", 0),
+    )
 
 
 @router.get("/settings", response_model=SettingsOut)

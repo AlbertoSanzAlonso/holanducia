@@ -75,6 +75,9 @@ services:
       API_URL: http://api:8000
       REDIS_HOST: redis
       SNIPER_BACKEND: crawl4ai
+      DAILY_SYNC_ENABLED: "true"
+      DAILY_SYNC_HOUR: "7"
+      DAILY_SYNC_TARGET: "200"
       PYTHONPATH: /app:/app/scrapers
     command: ["python", "scrapers/main.py"]
     volumes:

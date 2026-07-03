@@ -36,6 +36,9 @@ class PropertyBase(BaseModel):
     category_id: Optional[int] = None
     catastro_ref: Optional[str] = None
     year_built: Optional[int] = None
+    is_active: bool = True
+    last_seen_at: Optional[datetime] = None
+    content_hash: Optional[str] = None
 
 
 class PropertyCreate(PropertyBase):
@@ -68,6 +71,9 @@ class PropertyUpdate(BaseModel):
     category_id: Optional[int] = None
     catastro_ref: Optional[str] = None
     year_built: Optional[int] = None
+    is_active: bool = True
+    last_seen_at: Optional[datetime] = None
+    content_hash: Optional[str] = None
 
 
 class PropertyOut(PropertyBase):
@@ -161,3 +167,25 @@ class SimilarPropertyMatch(BaseModel):
 class EmbedBackfillResponse(BaseModel):
     embedded: int
     available: bool
+
+
+class SyncStartRequest(BaseModel):
+    sources: List[str] = Field(default_factory=list)
+
+
+class SyncStartResponse(BaseModel):
+    sync_run_id: int
+    status: str
+
+
+class SyncFinalizeRequest(BaseModel):
+    seen_urls: List[str]
+    sources: List[str] = Field(default_factory=list)
+    stats: dict = Field(default_factory=dict)
+
+
+class SyncFinalizeResponse(BaseModel):
+    deactivated: int
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0

@@ -8,6 +8,7 @@ import sys
 import redis
 
 from scrapers.db_connector import DatabaseConnector
+from scrapers.sync_context import is_sync_mode
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -65,6 +66,8 @@ class BaseScraper(ABC):
 
     async def is_already_scraped(self, url: str) -> bool:
         """Checks if URL was already processed in the last 7 days"""
+        if is_sync_mode():
+            return False
         if not self.redis:
             return False
         

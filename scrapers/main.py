@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timezone
 
 import httpx
+import redis
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from agency.director import DirectorAgent
@@ -16,13 +17,66 @@ logging.basicConfig(
 logger = logging.getLogger("HolanducIA_Worker")
 
 
+async def scheduler_loop(client: httpx.AsyncClient, api_url: str) -> None:
+    """Programa sync diario automático de todas las fuentes."""
+    redis_client = None
+    try:
+        redis_client = redis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0, decode_responses=True
+        )
+        redis_client.ping()
+    except Exception as e:
+        logger.warning("Scheduler sin Redis (sync diario manual): %s", e)
+
+    while True:
+        try:
+            if os.getenv("DAILY_SYNC_ENABLED", "true").lower() != "true":
+                await asyncio.sleep(3600)
+                continue
+
+            hour = int(os.getenv("DAILY_SYNC_HOUR", "7"))
+            now = datetime.now()
+            today_key = f"holanducia:daily_sync:{now.strftime('%Y-%m-%d')}"
+
+            if now.hour >= hour and (not redis_client or not redis_client.get(today_key)):
+                pending = await client.get(f"{api_url}/api/scraping-requests/pending")
+                if pending.status_code == 200 and pending.json():
+                    await asyncio.sleep(3600)
+                    continue
+
+                target = int(os.getenv("DAILY_SYNC_TARGET", "200"))
+                resp = await client.post(
+                    f"{api_url}/api/scraping-requests",
+                    json={
+                        "source_name": "daily_sync",
+                        "target_leads": target,
+                        "status": "pending",
+                    },
+                )
+                if resp.status_code < 400:
+                    if redis_client:
+                        redis_client.set(today_key, "1", ex=86400)
+                    logger.info("Sync diario encolado — objetivo %s anuncios", target)
+        except Exception as e:
+            logger.warning("Error en scheduler diario: %s", e)
+
+        await asyncio.sleep(3600)
+
+
 async def main():
     api_url = os.getenv("API_URL", "http://api:8000").rstrip("/")
     director = DirectorAgent(api_url=api_url)
 
-    logger.info("HolanducIA Worker iniciado. API: %s", api_url)
+    logger.info(
+        "HolanducIA Worker iniciado. API: %s | Sync diario: %s a las %s:00",
+        api_url,
+        os.getenv("DAILY_SYNC_ENABLED", "true"),
+        os.getenv("DAILY_SYNC_HOUR", "7"),
+    )
 
     async with httpx.AsyncClient(timeout=60.0) as client:
+        asyncio.create_task(scheduler_loop(client, api_url))
+
         while True:
             try:
                 response = await client.get(f"{api_url}/api/scraping-requests/pending")
@@ -37,7 +91,7 @@ async def main():
                     continue
 
                 request_id = request["id"]
-                logger.info("Mision recibida: %s", request_id)
+                logger.info("Mision recibida: %s (%s)", request_id, request.get("source_name"))
 
                 await client.patch(
                     f"{api_url}/api/scraping-requests/{request_id}",

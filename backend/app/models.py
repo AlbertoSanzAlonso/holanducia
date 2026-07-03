@@ -43,8 +43,22 @@ class Property(Base):
     category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("categories.id"))
     catastro_ref: Mapped[Optional[str]] = mapped_column(String(100))
     year_built: Mapped[Optional[int]] = mapped_column(Integer)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SyncRun(Base):
+    __tablename__ = "sync_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(50), default="running")
+    sources: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
+    stats: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
 class UserSettings(Base):

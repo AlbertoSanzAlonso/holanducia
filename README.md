@@ -120,6 +120,28 @@ Raw → Curator (dedup) → Analyst (extracción) → Supervisor (validación IA
 
 Requiere `OPENAI_API_KEY` en el servicio **api** (embeddings vectoriales) y `GROQ_API_KEY` en **worker** (Analyst/Supervisor).
 
+## Sync diario automático
+
+El worker programa un sync cada día (por defecto **7:00**):
+
+```
+Todas las fuentes → comparar con BD → crear | actualizar | sin cambios | dar de baja
+```
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `DAILY_SYNC_ENABLED` | `true` | Activa scheduler |
+| `DAILY_SYNC_HOUR` | `7` | Hora del servidor |
+| `DAILY_SYNC_TARGET` | `200` | Anuncios a procesar |
+| `SYNC_DEACTIVATE_MIN_COVERAGE` | `0.25` | Cobertura mínima para dar de baja |
+
+- **Crear**: URL nueva → Postgres + vector
+- **Actualizar**: mismo URL, cambió precio/datos → upsert + re-embed
+- **Sin cambios**: mismo `content_hash` → solo `last_seen_at`
+- **Baja**: no visto en sync con cobertura suficiente → `is_active=false`
+
+También puedes lanzar sync manual: el worker crea una misión `daily_sync` o usa "Actualizar ahora".
+
 ---
 
 ## Estructura del repo
