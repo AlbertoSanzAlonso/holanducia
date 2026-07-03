@@ -35,6 +35,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://holanducia:holanducia@postgres:5432/holanducia
       REDIS_HOST: redis
       PYTHONPATH: /app:/app/scrapers
+      MEDIA_ROOT: /app/media/properties
+    volumes:
+      - media_data:/app/media
     expose:
       - "8000"
     ports:
@@ -79,9 +82,11 @@ services:
       DAILY_SYNC_HOUR: "7"
       DAILY_SYNC_TARGET: "200"
       PYTHONPATH: /app:/app/scrapers
+      MEDIA_ROOT: /app/media/properties
     command: ["python", "scrapers/main.py"]
     volumes:
       - fb_session:/app/scrapers/debug
+      - media_data:/app/media
 
   redis:
     image: redis:alpine
@@ -93,6 +98,7 @@ services:
 volumes:
   postgres_data:
   fb_session:
+  media_data:
 
 networks:
   default:

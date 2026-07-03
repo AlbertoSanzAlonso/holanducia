@@ -5,9 +5,10 @@ from langgraph.graph import END, START, StateGraph
 
 from scrapers.agency.analyst import AnalystAgent
 from scrapers.agency.curator import CuratorAgent
+from scrapers.agency.fb_classifier import FacebookClassifierAgent
 from scrapers.agency.persist import persist_supervised_leads
 from scrapers.agency.supervisor import SupervisorAgent
-from scrapers.fb_utils import enrich_lead_from_raw, is_quality_facebook_lead
+from scrapers.fb_utils import enrich_lead_from_raw, is_quality_facebook_lead, is_property_listing_text
 from scrapers.agency.types import PropertyPipelineState
 from scrapers.db_connector import DatabaseConnector
 
@@ -27,6 +28,7 @@ def build_property_pipeline(
     curator = CuratorAgent(connector, is_already_scraped)
     analyst = AnalystAgent()
     supervisor = SupervisorAgent()
+    fb_classifier = FacebookClassifierAgent()
 
     async def curate_candidates(state: PropertyPipelineState) -> PropertyPipelineState:
         source = state.get("source", "Unknown")
@@ -51,11 +53,28 @@ def build_property_pipeline(
         source = state.get("source", "Unknown")
         rejected_non_real_estate = 0
         rejected_low_quality = 0
+        rejected_classifier = 0
 
         for item in state.get("approved", []):
             if len(leads) >= limit:
                 break
             raw_text = item["raw_text"]
+
+            if source == "Facebook":
+                if not is_property_listing_text(raw_text):
+                    rejected_classifier += 1
+                    continue
+                classification = await fb_classifier.classify(raw_text)
+                if not fb_classifier.passes(classification):
+                    rejected_classifier += 1
+                    logger.info(
+                        "FB Classifier rechazado (%.0f%%): %s — %s",
+                        classification["confidence"] * 100,
+                        classification["reason"],
+                        raw_text[:70],
+                    )
+                    continue
+
             ai_data = await analyst.parse_raw_text(
                 raw_text,
                 source,
@@ -95,9 +114,11 @@ def build_property_pipeline(
         stats["analyzed"] = len(leads)
         stats["rejected_non_real_estate"] = rejected_non_real_estate
         stats["rejected_low_quality"] = rejected_low_quality
+        stats["rejected_classifier"] = rejected_classifier
         logger.info(
-            "PropertyPipeline [analyze]: %s leads, %s no-inmobiliario, %s baja calidad",
+            "PropertyPipeline [analyze]: %s leads, %s classifier, %s no-inmobiliario, %s baja calidad",
             len(leads),
+            rejected_classifier,
             rejected_non_real_estate,
             rejected_low_quality,
         )

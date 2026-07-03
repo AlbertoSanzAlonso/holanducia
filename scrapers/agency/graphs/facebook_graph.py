@@ -7,7 +7,7 @@ from scrapers.agency.graphs.property_pipeline import run_property_pipeline
 from scrapers.agency.scout import ScoutAgent
 from scrapers.db_connector import DatabaseConnector
 
-from scrapers.fb_utils import looks_like_real_estate
+from scrapers.fb_utils import is_property_listing_text
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ def build_facebook_graph(
         posts = state.get("posts", [])
         candidates = [
             p for p in posts
-            if looks_like_real_estate(_post_text(p))
+            if is_property_listing_text(_post_text(p))
         ]
 
         logger.info(

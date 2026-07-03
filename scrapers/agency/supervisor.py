@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, TypedDict
 
 import httpx
 
-from scrapers.fb_utils import is_quality_facebook_lead, looks_like_real_estate
+from scrapers.fb_utils import is_property_listing_text, is_quality_facebook_lead
 from scrapers.portal_utils import is_facebook_post_url, is_valid_listing_url
 
 logger = logging.getLogger(__name__)
@@ -78,10 +78,12 @@ class SupervisorAgent:
             return {"approved": False, "reason": "sin_título", "quality_score": 0}
 
         if source == "Facebook":
-            if not looks_like_real_estate(context):
+            if not is_property_listing_text(context):
                 return {"approved": False, "reason": "fb_no_inmobiliario", "quality_score": 0}
-            if not is_quality_facebook_lead(lead, context):
+            if not is_quality_facebook_lead(lead, context, min_score=5):
                 return {"approved": False, "reason": "fb_calidad_insuficiente", "quality_score": 1}
+            if not self.llm_key:
+                return {"approved": False, "reason": "fb_requiere_supervisor_ia", "quality_score": 0}
         else:
             if price <= 0 and not rooms and not size_m2:
                 return {"approved": False, "reason": "sin_precio_ni_datos", "quality_score": 1}
@@ -102,7 +104,7 @@ class SupervisorAgent:
         if len(description) >= 80:
             score += 1
 
-        min_score = 3 if source == "Facebook" else 2
+        min_score = 5 if source == "Facebook" else 2
         if score < min_score:
             return {"approved": False, "reason": f"score_bajo_{score}", "quality_score": score}
 
@@ -110,7 +112,31 @@ class SupervisorAgent:
 
     async def _ai_review(self, lead: Dict[str, Any], source: str, raw_text: str) -> Optional[SuperviseResult]:
         context = raw_text or lead.get("description") or ""
-        prompt = f"""
+        if source == "Facebook":
+            prompt = f"""Eres el Supervisor INMOBILIARIO de HolanducIA. Clasificación ESTRICTA de posts de Facebook.
+
+RECHAZAR (approved=false) sin excepción:
+- Opiniones, recomendaciones de productos/tiendas ("excelentes", "recomiendo")
+- Conversación social, agradecimientos, memes
+- Empleo, servicios, coches, muebles
+- Posts sin anuncio concreto de vivienda/local
+
+APROBAR (approved=true) SOLO si:
+- Anuncio claro de piso/casa/local en venta o alquiler
+- Precio O (habitaciones + m²) O foto de la propiedad
+- Texto describe una propiedad específica
+
+Título: {lead.get("title")}
+Precio: {lead.get("price")} EUR | Hab: {lead.get("rooms")} | m²: {lead.get("size_m2")}
+Fotos descargadas: {len(lead.get("images") or [])}
+URL post: {lead.get("url")}
+
+Texto:
+{context[:2500]}
+
+JSON: {{"approved": true/false, "reason": "motivo", "quality_score": 0-10}}"""
+        else:
+            prompt = f"""
 Eres el Supervisor de calidad de HolanducIA. Decides si un anuncio debe guardarse en la base de datos.
 
 Fuente: {source}

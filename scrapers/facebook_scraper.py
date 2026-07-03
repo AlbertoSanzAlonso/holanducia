@@ -50,13 +50,31 @@ EXTRACT_POSTS_JS = """() => {
 
     function imagesFrom(el) {
         const imgs = [];
-        el.querySelectorAll('img[src]').forEach(img => {
-            const src = img.src || '';
-            if (!src.includes('scontent') && !src.includes('fbcdn')) return;
-            if (src.includes('emoji') || src.includes('static.xx') || src.includes('rsrc.php')) return;
-            imgs.push(src.split('&')[0].split('?')[0]);
+        el.querySelectorAll('img').forEach(img => {
+            const w = img.naturalWidth || img.width || 0;
+            const h = img.naturalHeight || img.height || 0;
+            if (w > 0 && w < 100 && h > 0 && h < 100) return;
+            let src = '';
+            if (img.srcset) {
+                const parts = img.srcset.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+                src = parts[parts.length - 1] || img.src || '';
+            } else {
+                src = img.src || img.getAttribute('data-src') || '';
+            }
+            if (!src) return;
+            const lower = src.toLowerCase();
+            if (!lower.includes('scontent') && !lower.includes('fbcdn')) return;
+            if (lower.includes('emoji') || lower.includes('static.xx') || lower.includes('rsrc.php')) return;
+            if (lower.includes('profile') || lower.includes('safe_image')) return;
+            imgs.push(src.split('&')[0]);
         });
-        return [...new Set(imgs)].slice(0, 6);
+        el.querySelectorAll('[style*="background-image"]').forEach(el => {
+            const m = (el.getAttribute('style') || '').match(/url\\(["']?(https:[^"')]+)/i);
+            if (m && (m[1].includes('scontent') || m[1].includes('fbcdn'))) {
+                imgs.push(m[1].split('&')[0]);
+            }
+        });
+        return [...new Set(imgs)].slice(0, 8);
     }
 
     const articles = document.querySelectorAll('div[role="article"], article');

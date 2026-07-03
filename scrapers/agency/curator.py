@@ -5,7 +5,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 from scrapers.agency.types import CurateAction, CurateResult, RawLead
 from scrapers.db_connector import DatabaseConnector
-from scrapers.fb_utils import looks_like_real_estate
+from scrapers.fb_utils import is_property_listing_text
 from scrapers.sync_context import is_sync_mode
 
 logger = logging.getLogger(__name__)
@@ -182,7 +182,7 @@ class CuratorAgent:
                 skipped += 1
                 continue
 
-            if source == "Facebook" and not looks_like_real_estate(text):
+            if source == "Facebook" and not is_property_listing_text(text):
                 skipped += 1
                 continue
 

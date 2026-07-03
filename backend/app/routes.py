@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +37,7 @@ from backend.app.services.sync_service import SyncService, compute_content_hash
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", "/app/media/properties"))
 
 PROPERTY_FIELDS = {
     "external_id", "url", "source", "title", "price", "city", "neighborhood", "address",
@@ -58,6 +62,15 @@ def apply_opportunity_score(data: dict) -> dict:
 
 def property_to_dict(prop: Property) -> dict:
     return {field: getattr(prop, field) for field in PROPERTY_FIELDS | {"id", "created_at", "updated_at"}}
+
+
+@router.get("/media/properties/{filename}")
+async def serve_property_image(filename: str):
+    safe = Path(filename).name
+    path = MEDIA_ROOT / safe
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(path)
 
 
 @router.get("/categories", response_model=List[CategoryOut])
