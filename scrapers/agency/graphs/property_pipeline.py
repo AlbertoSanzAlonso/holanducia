@@ -50,7 +50,11 @@ def build_property_pipeline(
         for item in state.get("approved", []):
             if len(leads) >= limit:
                 break
-            ai_data = await analyst.parse_raw_text(item["raw_text"], source)
+            ai_data = await analyst.parse_raw_text(
+                item["raw_text"],
+                source,
+                prequalified=(source == "Facebook"),
+            )
             if not ai_data:
                 rejected_non_real_estate += 1
                 continue

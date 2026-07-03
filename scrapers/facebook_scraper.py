@@ -194,14 +194,17 @@ class FacebookScraper(BaseScraper):
                 elif saved == 0:
                     stats = result.get("stats") or {}
                     diagnosis = result.get("diagnosis") or {}
-                    hint = diagnosis.get("message") or "sin posts extraíbles"
                     rejected = stats.get("rejected_non_real_estate", 0)
-                    posts_total = stats.get("posts_total", 0)
-                    msg = (
-                        f"Facebook 0 leads en {group_url}: {hint}. "
-                        f"posts={posts_total}, descartados_ia={rejected}. "
-                        "Login FB falló — prueba FB_SESSION_B64 o verifica contraseña."
-                    )
+                    posts_total = stats.get("posts_total", len(dom_posts))
+                    keyword_hits = stats.get("keyword_candidates", 0)
+                    if posts_total > 0:
+                        hint = (
+                            f"{posts_total} posts leídos, {keyword_hits} con keywords, "
+                            f"{rejected} descartados por Analyst"
+                        )
+                    else:
+                        hint = diagnosis.get("message") or "sin posts en el DOM"
+                    msg = f"Facebook 0 leads en {group_url}: {hint}."
                     logger.warning(msg)
                     await self.connector.upsert_scraping_status("processing", msg)
                 else:

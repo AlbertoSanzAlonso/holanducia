@@ -25,15 +25,28 @@ class AnalystAgent:
             self.llm_key = None
             self.llm_model = None
 
-    async def parse_raw_text(self, raw_content: str, source: str = "Facebook") -> Optional[Dict[str, Any]]:
+    async def parse_raw_text(
+        self,
+        raw_content: str,
+        source: str = "Facebook",
+        *,
+        prequalified: bool = False,
+    ) -> Optional[Dict[str, Any]]:
         """Analiza un anuncio individual y extrae datos estructurados"""
         self.logger = logger
         self.logger.info(f"🧠 AI Analizando post individual de {source}...")
-        
+
+        prequalified_note = ""
+        if prequalified:
+            prequalified_note = """
+        NOTA: Este post YA pasó el filtro de keywords inmobiliarios del grupo.
+        Debes extraer la propiedad y poner is_real_estate=true salvo spam evidente.
+        """
+
         prompt = f"""
         Actúa como un experto buscador de inversiones inmobiliarias. 
         Analiza el siguiente texto de {source} y extrae los datos de la propiedad.
-
+        {prequalified_note}
         REGLAS DE ORO:
         1. TÍTULO: Crea un título profesional y atractivo basado en el contenido (Máx 10 palabras). NUNCA devuelvas "None" o vacío.
         2. PRECIO: Pon el número. Si no hay, pon 0.
@@ -55,8 +68,8 @@ class AnalystAgent:
 
         Texto: {raw_content[:2000]}
         """
-        
-        return await self._call_ai(prompt, source)
+
+        return await self._call_ai(prompt, source, prequalified=prequalified)
 
     async def parse_bulk_text(
         self,
@@ -87,7 +100,7 @@ class AnalystAgent:
         assign_images_to_leads(leads, page_images or [])
         return leads
 
-    async def _call_ai(self, prompt: str, source: str, is_bulk=False):
+    async def _call_ai(self, prompt: str, source: str, is_bulk=False, prequalified: bool = False):
         """Llamada genérica a OpenAI o Groq (compatible OpenAI)."""
         if not self.llm_key:
             logger.error("❌ Falta GROQ_API_KEY u OPENAI_API_KEY para el análisis IA.")
@@ -112,9 +125,15 @@ class AnalystAgent:
                 data = json.loads(content)
                 
                 if not is_bulk:
-                    if not data.get("is_real_estate", True): 
-                        logger.warning("🚫 Clasificado como NO inmobiliario por IA.")
-                        return None
+                    if not data.get("is_real_estate", True):
+                        if prequalified:
+                            logger.info(
+                                "Post prequalified (keywords FB) — Analyst dijo no-inmobiliario; extrayendo igual."
+                            )
+                            data["is_real_estate"] = True
+                        else:
+                            logger.warning("🚫 Clasificado como NO inmobiliario por IA.")
+                            return None
                     # Asegurar título
                     if not data.get("title") or data["title"] == "None":
                         data["title"] = f"Propiedad en {data.get('city', 'Málaga')}"

@@ -39,9 +39,7 @@ async def main():
     password = os.getenv("FB_PASSWORD")
 
     if not user:
-        print("Falta FB_USER. Ejemplo:", file=sys.stderr)
-        print("  export FB_USER=tu@email.com", file=sys.stderr)
-        sys.exit(1)
+        print("FB_USER no está en .env — puedes loguearte manualmente en el navegador.\n")
 
     SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -56,7 +54,7 @@ async def main():
         page = await context.new_page()
         await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded")
 
-        if password:
+        if password and user:
             try:
                 await page.fill('input[name="email"]', user)
                 await page.fill('input[name="pass"]', password)
@@ -65,7 +63,7 @@ async def main():
             except Exception:
                 print("Rellena login manualmente en el navegador.\n")
         else:
-            print(f"Email sugerido: {user}\nRellena login manualmente en el navegador.\n")
+            print("Inicia sesión manualmente en el navegador (email/contraseña/captcha).\n")
 
         input(">>> Pulsa ENTER aquí cuando hayas iniciado sesión en Facebook... ")
 
