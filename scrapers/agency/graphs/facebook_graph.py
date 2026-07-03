@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 REAL_ESTATE_KEYWORDS = [
     "piso", "casa", "vivienda", "alquiler", "vendo", "venta", "chalet", "inmueble",
     "hab", "dorm", "baño", "estudio", "loft", "duplex", "finca", "apartamento",
-    "€", "euro", "precio", "m2", "particular", "inmobiliaria", "comunidad",
+    "€", "euro", "precio", "m2", "m²", "particular", "inmobiliaria", "comunidad",
+    "se alquila", "se vende", "ático", "atico", "garaje", "terreno", "local",
+    "reformado", "amueblado", "oportunidad", "urgente",
 ]
 
 
@@ -67,12 +69,23 @@ def build_facebook_graph(
     async def filter_candidates(state: FacebookPipelineState) -> FacebookPipelineState:
         posts = state.get("posts", [])
         candidates = [p for p in posts if any(k in p.lower() for k in REAL_ESTATE_KEYWORDS)]
-        logger.info(
-            "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",
-            len(candidates),
-            len(posts),
-        )
-        return {"candidates": candidates}
+
+        if not candidates and posts:
+            candidates = sorted(posts, key=len, reverse=True)[:15]
+            logger.info(
+                "LangGraph [filter]: sin keywords — enviando %s posts al Analyst (decisión is_real_estate)",
+                len(candidates),
+            )
+        else:
+            logger.info(
+                "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",
+                len(candidates),
+                len(posts),
+            )
+
+        stats = dict(state.get("stats") or {})
+        stats.update({"posts_total": len(posts), "keyword_candidates": len(candidates)})
+        return {"candidates": candidates, "stats": stats}
 
     async def process_pipeline(state: FacebookPipelineState) -> FacebookPipelineState:
         result = await run_property_pipeline(
@@ -88,7 +101,7 @@ def build_facebook_graph(
         return {
             "saved_count": result.get("saved_count", 0),
             "skipped_count": result.get("skipped_count", 0),
-            "stats": result.get("stats", {}),
+            "stats": {**dict(state.get("stats") or {}), **dict(result.get("stats") or {})},
         }
 
     async def abort(state: FacebookPipelineState) -> FacebookPipelineState:

@@ -133,6 +133,20 @@ class FacebookScraper(BaseScraper):
 
                 if result.get("error"):
                     logger.warning("Grupo %s: %s", group_url, result["error"])
+                    await self.connector.upsert_scraping_status("processing", f"Facebook: {result['error']}")
+                elif saved == 0:
+                    stats = result.get("stats") or {}
+                    diagnosis = result.get("diagnosis") or {}
+                    hint = diagnosis.get("message") or "sin posts extraíbles"
+                    rejected = stats.get("rejected_non_real_estate", 0)
+                    posts_total = stats.get("posts_total", 0)
+                    msg = (
+                        f"Facebook 0 leads en {group_url}: {hint}. "
+                        f"posts={posts_total}, descartados_ia={rejected}. "
+                        "¿FB_USER/FB_PASSWORD configurados?"
+                    )
+                    logger.warning(msg)
+                    await self.connector.upsert_scraping_status("processing", msg)
                 else:
                     logger.info(
                         "Grupo %s: %s leads (método=%s, scroll=%spx)",

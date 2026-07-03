@@ -45,12 +45,14 @@ def build_property_pipeline(
         leads: List[Dict[str, Any]] = []
         limit = state.get("limit", 50)
         source = state.get("source", "Unknown")
+        rejected_non_real_estate = 0
 
         for item in state.get("approved", []):
             if len(leads) >= limit:
                 break
             ai_data = await analyst.parse_raw_text(item["raw_text"], source)
             if not ai_data:
+                rejected_non_real_estate += 1
                 continue
             ai_data.pop("is_real_estate", None)
             ai_data["_raw_dedup_key"] = item.get("dedup_key")
@@ -58,7 +60,12 @@ def build_property_pipeline(
 
         stats = dict(state.get("stats") or {})
         stats["analyzed"] = len(leads)
-        logger.info("PropertyPipeline [analyze]: %s leads estructurados", len(leads))
+        stats["rejected_non_real_estate"] = rejected_non_real_estate
+        logger.info(
+            "PropertyPipeline [analyze]: %s leads estructurados, %s descartados (no inmobiliario)",
+            len(leads),
+            rejected_non_real_estate,
+        )
         return {"leads": leads, "stats": stats}
 
     async def persist_leads(state: PropertyPipelineState) -> PropertyPipelineState:

@@ -38,7 +38,9 @@ class AnalystAgent:
         1. TÍTULO: Crea un título profesional y atractivo basado en el contenido (Máx 10 palabras). NUNCA devuelvas "None" o vacío.
         2. PRECIO: Pon el número. Si no hay, pon 0.
         3. CIUDAD: Dúdicela o usa el contexto (Málaga, Marbella, etc).
-        4. FILTRO: Si el texto NO es un anuncio inmobiliario real, establece "is_real_estate": false.
+        4. FILTRO is_real_estate:
+           - true si el post ofrece, busca o comenta una vivienda (aunque sea informal).
+           - false SOLO si es claramente otro tema (memes, eventos, spam, noticias, venta de muebles/coches).
 
         Devuelve SOLO un JSON:
         {{
