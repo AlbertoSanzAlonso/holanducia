@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from './api'
+import { api, API_URL } from './api'
 import { 
   Search, MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
   Eye, Mail, MoreHorizontal, ChevronRight, ChevronLeft, Menu, X,
@@ -28,15 +28,17 @@ function App() {
 
   const fetchData = async () => {
     setLoading(true)
+    setErrorField(null)
     try {
         const [propsData, catsData] = await Promise.all([
           api.getProperties(),
           api.getCategories(),
         ])
-        setProperties(propsData || [])
-        setCategories(catsData || [])
+        setProperties(Array.isArray(propsData) ? propsData : [])
+        setCategories(Array.isArray(catsData) ? catsData : [])
     } catch (e) {
-        setErrorField("Revisa la conexión con el servidor.")
+        setErrorField(`No se pudo conectar con la API (${API_URL || 'VITE_API_URL no configurada'}). En Vercel, define VITE_API_URL con la URL pública del VPS y redeploy.`)
+        console.error('fetchData:', e)
     } finally {
         setLoading(false)
     }
@@ -97,6 +99,20 @@ function App() {
   })
 
   const paginatedProperties = filteredProperties.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  const emptyMessage = (() => {
+    if (loading) return null
+    if (errorField) return errorField
+    if (properties.length === 0) return 'No hay propiedades en la base de datos. Usa Configuración → Actualizar ahora para scrapear.'
+    if (selectedCategoryId) {
+      const cat = categories.find(c => c.id === selectedCategoryId)
+      return `Ninguna propiedad en "${cat?.name || 'esta categoría'}". Pulsa "Todo el Mercado" o asigna categorías desde el detalle de cada inmueble.`
+    }
+    if (filter === 'hot') return 'Ninguna oportunidad TOP (score ≥ 80). Prueba el filtro TODOS.'
+    if (filter === 'particular') return 'Ningún anuncio de particular con los filtros actuales.'
+    if (searchTerm.trim()) return `Sin resultados para "${searchTerm}".`
+    return null
+  })()
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc] font-sans selection:bg-[#00acee] selection:text-white">
@@ -206,6 +222,20 @@ function App() {
                    </div>
                 </div>
              </div>
+
+             {emptyMessage && paginatedProperties.length === 0 && (
+                <div className={`mb-12 p-8 rounded-3xl border-2 ${errorField ? 'bg-red-50 border-red-200 text-red-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                  <p className="font-bold text-sm leading-relaxed">{emptyMessage}</p>
+                  {(selectedCategoryId || filter !== 'all') && !errorField && (
+                    <button
+                      onClick={() => { setFilter('all'); setSelectedCategoryId(null); setSearchTerm(''); setCurrentPage(1) }}
+                      className="mt-4 text-xs font-black uppercase tracking-widest text-[#00acee] hover:underline"
+                    >
+                      Ver todo el mercado
+                    </button>
+                  )}
+                </div>
+             )}
 
              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-12">
                 {paginatedProperties.map((prop, idx) => (

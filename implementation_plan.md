@@ -1,29 +1,41 @@
-# Implementation Plan - Real Estate AI Opportunity Finder
+# Implementation Plan — HolanducIA
 
-This project aims to build a high-performance real estate intelligence tool that identifies "Flash Opportunities" by scraping major portals, enriching data with Catastro/AI, and notifying agents in real-time.
+## Tech Stack (actual)
 
-## Tech Stack
-- **Backend**: InsForge BaaS (PostgreSQL, Auth, Edge Functions, AI)
-- **Scrapers**: Playwright / Scrapy (running on Compute or locally)
-- **Database**: Managed PostgreSQL (via InsForge)
-- **AI/ML**: Built-in InsForge AI (Claude/GPT-4o) + Custom logic
-- **Frontend**: Vite + React + Vanilla CSS (Deployed to InsForge Hosting)
+- **Frontend**: Vite + React + Tailwind → **Vercel**
+- **Backend**: FastAPI → **VPS** (Docker, puerto 9000)
+- **Database**: PostgreSQL 16 + **pgvector** (Docker)
+- **Cache / Dedup**: Redis (Docker)
+- **Scrapers**: Playwright, Crawl4AI, Firecrawl (worker Docker)
+- **AI**: Groq (Analyst), OpenAI embeddings (vectorial, opcional)
 
-## Phase 1: The Radar (MVP - Completed)
-- [x] Initialize project structure (`/backend`, `/scrapers`, `/docker`)
-- [x] Link to InsForge Project (`HolanducIA`)
-- [x] Create `properties` table in the cloud database.
-- [x] Implement base Scraper and specialized scrapers.
-- [x] Basic Opportunity Scoring and Catastro enrichment.
+~~InsForge~~ — **deprecado**. No usar BaaS ni edge functions.
 
-## Phase 2: Mass Intelligence & Production (Completed)
-- [x] Integration with **Firecrawl** for anti-bot bypassing.
-- [x] Mass Scraping engine for Fotocasa, Habitaclia, and Pisos.com.
-- [x] **Deduplication Strategy** using Redis to save Firecrawl credits.
-- [x] **Production Deployment**: Hetzner CX33 (8GB) + Coolify + Docker.
-- [x] Worker auto-triggering on pending requests.
+## Phase 1: The Radar (Completed)
 
-## Phase 3: AI & Enrichment (Current Focus)
-1.  **Vision analysis**: Implement GPT-4o Vision for photo analysis (e.g., "Reforma necesaria", "Luminoso").
-2.  **Catastro deep-link**: Automated surface and year-built validation.
-3.  **Refine extraction**: Improve sub-unit logic (parking, storage room) for all portals.
+- [x] Estructura `/backend`, `/scrapers`, `/frontend`
+- [x] PostgreSQL self-hosted + FastAPI CRUD
+- [x] Scrapers Facebook + portales
+- [x] Scoring de oportunidades en backend
+
+## Phase 2: Production VPS (Completed)
+
+- [x] Hetzner CX33 + Coolify + Docker Compose
+- [x] Worker con polling de `scraping_requests`
+- [x] Redis deduplication (ahorro Firecrawl)
+- [x] pgvector + Curator semántico
+
+## Phase 3: Frontend Vercel (Completed)
+
+- [x] Frontend desacoplado en Vercel
+- [x] `VITE_API_URL` → API del VPS
+- [x] InsForge eliminado del flujo de producción
+
+## Phase 4: Marco agéntico (En curso)
+
+- [x] Hunter + Curator + Analyst + Director
+- [x] LangGraph pipeline (Facebook + portales)
+- [x] Embeddings pgvector
+- [ ] Chat asesor vía API VPS (sustituir InsForge functions)
+- [ ] Vision analysis (fotos)
+- [ ] Catastro deep-link automatizado

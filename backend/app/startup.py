@@ -1,6 +1,7 @@
 import logging
+from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from backend.app.core.database import AsyncSessionLocal, engine
 from backend.app.models import Base, Category, UserSettings
@@ -15,10 +16,26 @@ DEFAULT_CATEGORIES = [
 
 DEFAULT_FB_GROUPS = ["41757906864", "1018337428507491", "397742921612774"]
 
+MIGRATION_PATH = Path(__file__).resolve().parents[2] / "db" / "migrate_pgvector.sql"
+
+
+async def _ensure_pgvector() -> None:
+    if not MIGRATION_PATH.exists():
+        return
+    sql = MIGRATION_PATH.read_text()
+    async with engine.begin() as conn:
+        for statement in sql.split(";"):
+            stmt = statement.strip()
+            if stmt:
+                await conn.execute(text(stmt))
+    logger.info("Migración pgvector aplicada")
+
 
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    await _ensure_pgvector()
 
     async with AsyncSessionLocal() as session:
         category_count = await session.scalar(select(func.count()).select_from(Category))

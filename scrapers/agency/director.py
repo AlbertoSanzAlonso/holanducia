@@ -3,15 +3,42 @@ import logging
 import os
 from typing import Any, Dict, List
 
+from scrapers.agency.hunter import HunterAgent
 from scrapers.db_connector import DatabaseConnector, build_portal_urls
 from scrapers.facebook_scraper import FacebookScraper
 
 logger = logging.getLogger(__name__)
 
+PORTAL_NAMES = ("Fotocasa", "Habitaclia", "Pisos.com", "Pisos")
+
 
 class DirectorAgent:
     def __init__(self, api_url: str = None):
         self.db = DatabaseConnector(api_url=api_url)
+        self.hunter = HunterAgent()
+
+    async def _discover_listing_urls(self, settings: Dict[str, Any]) -> List[str]:
+        cities = settings.get("cities") or ["malaga"]
+        portals_raw = settings.get("portals") or ""
+        portals = [
+            p.strip()
+            for p in portals_raw.split(",")
+            if p.strip() and p.strip().lower() not in {"facebook", "catastro"}
+        ]
+
+        discovered: List[str] = []
+        for city in cities:
+            city_slug = city.strip().lower().replace(" ", "-")
+            for portal in portals:
+                portal_key = next((name for name in PORTAL_NAMES if name.lower() in portal.lower()), portal)
+                try:
+                    urls = await self.hunter.discover(portal_key, city_slug)
+                    discovered.extend(urls)
+                    logger.info("Hunter: %s urls en %s (%s)", len(urls), portal_key, city_slug)
+                except Exception as e:
+                    logger.error("Hunter falló en %s/%s: %s", portal_key, city_slug, e)
+
+        return list(dict.fromkeys(discovered))
 
     async def execute_mission(self, request: Dict[str, Any] = None):
         settings = await self.db.get_settings() or {}
@@ -35,6 +62,11 @@ class DirectorAgent:
                 fb_groups = [fb_groups.strip()]
         elif not isinstance(fb_groups, list):
             fb_groups = [str(fb_groups)] if fb_groups else []
+
+        discovered = await self._discover_listing_urls(settings)
+        if discovered:
+            portal_urls = list(dict.fromkeys(portal_urls + discovered))
+            logger.info("Director: %s urls de portales (listados + Hunter)", len(portal_urls))
 
         logger.info(
             "Iniciando mision. Objetivo: %s leads. Fuentes: %s grupos FB, %s portales Sniper.",

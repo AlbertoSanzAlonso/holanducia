@@ -1,8 +1,8 @@
-import hashlib
 import logging
 import os
 
 from scrapers.agency.analyst import AnalystAgent
+from scrapers.agency.graphs.property_pipeline import run_structured_leads_pipeline
 from scrapers.base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
@@ -18,9 +18,9 @@ class Crawl4AISniper(BaseScraper):
         return []
 
     async def scrape_portals(self, urls: list):
-        """Scrapea portales con Crawl4AI (gratis) + AnalystAgent (OpenAI)."""
+        """Scrapea portales con Crawl4AI + pipeline agéntico (Curator → Analyst → Persist)."""
         if not (os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")):
-            logger.error("🚫 No hay OPENAI_API_KEY ni GROQ_API_KEY configurada. Misión Sniper abortada.")
+            logger.error("No hay OPENAI_API_KEY ni GROQ_API_KEY configurada. Misión Sniper abortada.")
             return 0
 
         total_leads = 0
@@ -29,35 +29,51 @@ class Crawl4AISniper(BaseScraper):
             if total_leads >= self.limit:
                 break
 
-            logger.info(f"🎯 Sniper Crawl4AI apuntando a: {url}")
+            logger.info("Sniper Crawl4AI apuntando a: %s", url)
 
             try:
                 data = await self.scrape_with_crawl4ai(url)
                 markdown_content = (data or {}).get("markdown", "")
 
                 if not markdown_content:
-                    logger.warning("⚠️ Crawl4AI devolvió contenido vacío.")
+                    logger.warning("Crawl4AI devolvió contenido vacío.")
                     continue
 
                 source_name = url.split("//")[-1].split("/")[0].replace("www.", "")
-                leads = await self.analyst.parse_bulk_text(markdown_content, source_name)
+                bulk_leads = await self.analyst.parse_bulk_text(markdown_content, source_name)
 
-                for lead in leads:
-                    if total_leads >= self.limit:
-                        break
+                remaining = self.limit - total_leads
+                result = await run_structured_leads_pipeline(
+                    source=source_name,
+                    base_url=url,
+                    leads=bulk_leads,
+                    limit=remaining,
+                    connector=self.connector,
+                    persist_lead=self._persist_lead,
+                    is_already_scraped=self.is_already_scraped,
+                    mark_as_scraped=self.mark_as_scraped,
+                )
 
-                    f_hash = hashlib.md5(f"{lead['title']}{lead['price']}".encode()).hexdigest()[:12]
-                    lead["external_id"] = f_hash
-                    lead["url"] = f"{url}#sniper-{f_hash}"
-
-                    try:
-                        await self.connector.upsert_property(lead)
-                        total_leads += 1
-                        logger.info(f"✨ Sniper impactó: {lead['title']} en {lead.get('city', 'Málaga')}")
-                    except Exception as upsert_error:
-                        logger.error(f"❌ No se pudo guardar lead: {upsert_error}")
+                saved = result.get("saved_count", 0)
+                total_leads += saved
+                stats = result.get("stats", {})
+                logger.info(
+                    "Portal %s: %s guardados (%s duplicados, %s analizados)",
+                    url,
+                    saved,
+                    stats.get("duplicates", 0),
+                    stats.get("analyzed", 0),
+                )
 
             except Exception as e:
-                logger.error(f"❌ Error en misión Sniper Crawl4AI: {e}")
+                logger.error("Error en misión Sniper Crawl4AI: %s", e)
 
         return total_leads
+
+    async def _persist_lead(self, ai_data: dict, _base_url: str) -> bool:
+        try:
+            await self.connector.upsert_property(ai_data)
+            return True
+        except Exception as e:
+            logger.error("No se pudo guardar lead: %s", e)
+            return False

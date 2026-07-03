@@ -1,10 +1,14 @@
-import os
-import httpx
 import logging
-from scrapers.base_scraper import BaseScraper
+import os
+
+import httpx
+
 from scrapers.agency.analyst import AnalystAgent
+from scrapers.agency.graphs.property_pipeline import run_structured_leads_pipeline
+from scrapers.base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
+
 
 class FirecrawlSniper(BaseScraper):
     def __init__(self, limit=50):
@@ -18,63 +22,63 @@ class FirecrawlSniper(BaseScraper):
         return 0
 
     async def scrape_portals(self, urls: list):
-        """Ejecuta el modo ahorro sobre una lista de URLs de portales"""
         if not self.api_key:
-            logger.error("🚫 No hay FIRECRAWL_API_KEY configurada. Misión Sniper abortada.")
+            logger.error("No hay FIRECRAWL_API_KEY configurada. Misión Sniper abortada.")
             return 0
-            
+
         total_leads = 0
-        
+
         for url in urls:
-            if total_leads >= self.limit: break
-            
-            logger.info(f"🎯 Sniper apuntando a: {url}")
-            
+            if total_leads >= self.limit:
+                break
+
+            logger.info("Sniper apuntando a: %s", url)
+
             try:
-                # 1. SCRAPE QUIRÚRGICO (1 solo crédito de Firecrawl)
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     response = await client.post(
                         self.api_url,
                         headers={"Authorization": f"Bearer {self.api_key}"},
-                        json={
-                            "url": url,
-                            "formats": ["markdown"],
-                            "onlyMainContent": True
-                        }
+                        json={"url": url, "formats": ["markdown"], "onlyMainContent": True},
                     )
-                    
+
                     if response.status_code != 200:
-                        logger.error(f"❌ Error en Firecrawl ({response.status_code}): {response.text}")
+                        logger.error("Error en Firecrawl (%s): %s", response.status_code, response.text)
                         continue
-                        
-                    raw_data = response.json()
-                    markdown_content = raw_data.get("data", {}).get("markdown", "")
-                    
+
+                    markdown_content = response.json().get("data", {}).get("markdown", "")
                     if not markdown_content:
-                        logger.warning("⚠️ Firecrawl devolvió contenido vacío.")
+                        logger.warning("Firecrawl devolvió contenido vacío.")
                         continue
-                        
-                    # 2. EXTRACCIÓN MASIVA AI (1 sola llamada a OpenAI para 30+ leads)
-                    # Deduct the domain from URL for source naming
+
                     source_name = url.split("//")[-1].split("/")[0].replace("www.", "")
-                    leads = await self.analyst.parse_bulk_text(markdown_content, source_name)
-                    
-                    # 3. INYECCIÓN EN BASE DE DATOS
-                    for lead in leads:
-                        if total_leads >= self.limit: break
-                        
-                        # Generar identificador único sintético para Sniper (Bulk extraction lacks individual URLs)
-                        import hashlib
-                        f_hash = hashlib.md5(f"{lead['title']}{lead['price']}".encode()).hexdigest()[:12]
-                        lead["external_id"] = f_hash
-                        lead["url"] = f"{url}#sniper-{f_hash}" # Synthetic URL based on portal listing
-                        
-                        success = await self.connector.upsert_property(lead)
-                        if success:
-                            total_leads += 1
-                            logger.info(f"✨ Sniper impactó: {lead['title']} en {lead.get('city','Málaga')}")
-                            
+                    bulk_leads = await self.analyst.parse_bulk_text(markdown_content, source_name)
+
+                    remaining = self.limit - total_leads
+                    result = await run_structured_leads_pipeline(
+                        source=source_name,
+                        base_url=url,
+                        leads=bulk_leads,
+                        limit=remaining,
+                        connector=self.connector,
+                        persist_lead=self._persist_lead,
+                        is_already_scraped=self.is_already_scraped,
+                        mark_as_scraped=self.mark_as_scraped,
+                    )
+
+                    saved = result.get("saved_count", 0)
+                    total_leads += saved
+                    logger.info("Portal %s: %s leads guardados", url, saved)
+
             except Exception as e:
-                logger.error(f"❌ Error en misión Sniper: {e}")
-                
+                logger.error("Error en misión Sniper: %s", e)
+
         return total_leads
+
+    async def _persist_lead(self, ai_data: dict, _base_url: str) -> bool:
+        try:
+            await self.connector.upsert_property(ai_data)
+            return True
+        except Exception as e:
+            logger.error("No se pudo guardar lead: %s", e)
+            return False

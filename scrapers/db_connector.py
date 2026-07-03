@@ -51,13 +51,59 @@ class DatabaseConnector:
                 return None
 
     async def check_property_exists(self, url: str) -> bool:
+        urls, _ = await self.get_property_index()
+        return url in urls
+
+    async def get_property_index(self) -> tuple[set[str], set[str]]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.get(f"{self.api_url}/api/properties")
                 response.raise_for_status()
-                return any(item.get("url") == url for item in response.json())
-            except Exception:
-                return False
+                items = response.json()
+                urls = {item["url"] for item in items if item.get("url")}
+                external_ids = {item["external_id"] for item in items if item.get("external_id")}
+                return urls, external_ids
+            except Exception as e:
+                logger.error("Failed to load property index: %s", e)
+                return set(), set()
+
+    async def find_similar_property(
+        self,
+        lead: Dict[str, Any],
+        *,
+        exclude_url: Optional[str] = None,
+        min_similarity: float = 0.75,
+    ) -> Optional[Dict[str, Any]]:
+        text = self._lead_to_search_text(lead)
+        if not text.strip():
+            return None
+
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.api_url}/api/properties/similar",
+                    json={"text": text, "limit": 3, "min_similarity": min_similarity},
+                )
+                if response.status_code != 200:
+                    return None
+                for match in response.json():
+                    if exclude_url and match.get("url") == exclude_url:
+                        continue
+                    return match
+            except Exception as e:
+                logger.debug("Similarity search unavailable: %s", e)
+        return None
+
+    @staticmethod
+    def _lead_to_search_text(lead: Dict[str, Any]) -> str:
+        parts = [
+            lead.get("title"),
+            f"Precio: {lead.get('price')} EUR" if lead.get("price") else None,
+            f"Ciudad: {lead.get('city')}" if lead.get("city") else None,
+            lead.get("description"),
+            f"{lead.get('rooms')} habitaciones" if lead.get("rooms") else None,
+        ]
+        return " | ".join(str(p) for p in parts if p)
 
     async def upsert_scraping_status(self, status: str, message: str):
         async with httpx.AsyncClient(timeout=30.0) as client:

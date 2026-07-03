@@ -1,16 +1,36 @@
-# React + Vite
+# HolanducIA Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Dashboard React desplegado en **Vercel**. La API vive en el **VPS** (FastAPI puerto 9000).
 
-Currently, two official plugins are available:
+## Variables de entorno (Vercel)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Variable | Ejemplo | Obligatorio |
+|----------|---------|-------------|
+| `VITE_API_URL` | `https://api.holanducia.com` o `http://IP-VPS:9000` | **Sí** |
 
-## React Compiler
+Configúrala en Vercel → Project → Settings → Environment Variables (Production y Preview).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Después de cambiarla, **Redeploy** el proyecto.
 
-## Expanding the ESLint configuration
+## Desarrollo local
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+npm run dev
+# http://localhost:5173 — proxy /api → localhost:9000
+```
+
+Requiere la API en marcha (`docker compose up -d api` en la raíz del repo).
+
+## Build
+
+```bash
+npm run build    # genera dist/
+```
+
+Vercel detecta automáticamente Vite si el root directory es `frontend`.
+
+## Notas
+
+- No uses `localhost:9000` como `VITE_API_URL` en Vercel.
+- InsForge no se usa; el chat asesor está pendiente de migrar a la API del VPS.

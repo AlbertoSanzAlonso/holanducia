@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE categories (
     id SERIAL PRIMARY KEY,
@@ -68,6 +69,17 @@ INSERT INTO categories (name, color) VALUES
     ('Descartado', '#64748b');
 
 INSERT INTO user_settings (id) VALUES (1);
+
+CREATE TABLE property_embeddings (
+    id SERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL UNIQUE REFERENCES properties(id) ON DELETE CASCADE,
+    content_hash VARCHAR(64) NOT NULL,
+    embedding vector(1536) NOT NULL,
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_property_embeddings_hnsw
+    ON property_embeddings USING hnsw (embedding vector_cosine_ops);
 
 CREATE INDEX idx_properties_created_at ON properties (created_at DESC);
 CREATE INDEX idx_properties_opportunity_score ON properties (opportunity_score DESC);

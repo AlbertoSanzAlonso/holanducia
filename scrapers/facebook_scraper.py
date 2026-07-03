@@ -121,6 +121,7 @@ class FacebookScraper(BaseScraper):
                     page_text=page_text,
                     dom_posts=dom_posts,
                     limit=remaining,
+                    connector=self.connector,
                     persist_lead=self._persist_lead,
                     is_already_scraped=self.is_already_scraped,
                     mark_as_scraped=self.mark_as_scraped,

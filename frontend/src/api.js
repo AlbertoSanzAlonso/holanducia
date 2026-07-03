@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000'
+// API del VPS. En Vercel: VITE_API_URL=https://tu-api:9000 (ver frontend/.env.example)
+// En dev local: vacío → proxy Vite a localhost:9000
+const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
@@ -14,6 +16,8 @@ async function request(path, options = {}) {
   if (response.status === 204) return null
   return response.json()
 }
+
+export { API_URL }
 
 export const api = {
   getProperties: () => request('/api/properties'),

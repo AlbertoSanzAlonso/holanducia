@@ -141,3 +141,23 @@ class BatchDeleteRequest(BaseModel):
 class BatchCategoryRequest(BaseModel):
     ids: List[int]
     category_id: Optional[int] = None
+
+
+class SimilarPropertyRequest(BaseModel):
+    text: str
+    limit: int = 5
+    min_similarity: float = 0.75
+
+
+class SimilarPropertyMatch(BaseModel):
+    id: int
+    url: str
+    title: Optional[str] = None
+    price: float = 0
+    city: Optional[str] = None
+    similarity: float
+
+
+class EmbedBackfillResponse(BaseModel):
+    embedded: int
+    available: bool

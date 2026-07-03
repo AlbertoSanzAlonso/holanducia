@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: holanducia_postgres
     restart: always
     environment:
@@ -26,6 +26,8 @@ services:
       dockerfile: Dockerfile
     container_name: holanducia_api
     restart: always
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,8 +35,25 @@ services:
       DATABASE_URL: postgresql+asyncpg://holanducia:holanducia@postgres:5432/holanducia
       REDIS_HOST: redis
       PYTHONPATH: /app:/app/scrapers
+    expose:
+      - "8000"
     ports:
       - "9000:8000"
+
+  frontend:
+    # Opcional: solo desarrollo local. Producción → Vercel (ver README.md)
+    profiles: ["local-frontend"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+    container_name: holanducia_frontend
+    restart: always
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
 
   worker:
     build:

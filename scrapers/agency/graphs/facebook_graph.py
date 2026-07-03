@@ -1,11 +1,11 @@
-import hashlib
 import logging
 from typing import Any, Callable, Coroutine, Dict, List, Literal, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from scrapers.agency.analyst import AnalystAgent
+from scrapers.agency.graphs.property_pipeline import run_property_pipeline
 from scrapers.agency.scout import ScoutAgent
+from scrapers.db_connector import DatabaseConnector
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,9 @@ class FacebookPipelineState(TypedDict, total=False):
     extraction_method: Optional[str]
     diagnosis: Optional[Dict[str, Any]]
     candidates: List[str]
-    leads: List[Dict[str, Any]]
     saved_count: int
+    skipped_count: int
+    stats: Dict[str, Any]
     limit: int
     error: Optional[str]
 
@@ -36,12 +37,12 @@ MarkScrapedFn = Callable[[str], Coroutine[Any, Any, None]]
 
 
 def build_facebook_graph(
+    connector: DatabaseConnector,
     persist_lead: PersistFn,
     is_already_scraped: DedupCheckFn,
     mark_as_scraped: MarkScrapedFn,
 ):
     scout = ScoutAgent()
-    analyst = AnalystAgent()
 
     async def use_dom_posts(state: FacebookPipelineState) -> FacebookPipelineState:
         posts = [p.strip() for p in state.get("dom_posts", []) if len(p.strip()) > 50]
@@ -65,10 +66,7 @@ def build_facebook_graph(
 
     async def filter_candidates(state: FacebookPipelineState) -> FacebookPipelineState:
         posts = state.get("posts", [])
-        candidates = [
-            p for p in posts
-            if any(k in p.lower() for k in REAL_ESTATE_KEYWORDS)
-        ]
+        candidates = [p for p in posts if any(k in p.lower() for k in REAL_ESTATE_KEYWORDS)]
         logger.info(
             "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",
             len(candidates),
@@ -76,41 +74,22 @@ def build_facebook_graph(
         )
         return {"candidates": candidates}
 
-    async def analyze_leads(state: FacebookPipelineState) -> FacebookPipelineState:
-        leads: List[Dict[str, Any]] = []
-        limit = state.get("limit", 50)
-
-        for post_text in state.get("candidates", []):
-            if len(leads) >= limit:
-                break
-            ai_data = await analyst.parse_raw_text(post_text, "Facebook")
-            if ai_data:
-                ai_data.pop("is_real_estate", None)
-                leads.append(ai_data)
-
-        logger.info("LangGraph [analyze]: %s leads estructurados", len(leads))
-        return {"leads": leads}
-
-    async def persist_leads(state: FacebookPipelineState) -> FacebookPipelineState:
-        saved = 0
-        group_url = state["group_url"]
-
-        for ai_data in state.get("leads", []):
-            if saved >= state.get("limit", 50):
-                break
-
-            f_hash = hashlib.md5(f"{ai_data['title']}{ai_data['price']}".encode()).hexdigest()[:12]
-            if await is_already_scraped(f_hash):
-                continue
-
-            ai_data["external_id"] = f_hash
-            ai_data["url"] = f"{group_url}?post_id={f_hash}"
-            if await persist_lead(ai_data, group_url):
-                saved += 1
-                await mark_as_scraped(f_hash)
-                logger.info("LangGraph [persist]: lead guardado — %s", ai_data["title"])
-
-        return {"saved_count": saved}
+    async def process_pipeline(state: FacebookPipelineState) -> FacebookPipelineState:
+        result = await run_property_pipeline(
+            source="Facebook",
+            base_url=state["group_url"],
+            raw_candidates=state.get("candidates", []),
+            limit=state.get("limit", 50),
+            connector=connector,
+            persist_lead=persist_lead,
+            is_already_scraped=is_already_scraped,
+            mark_as_scraped=mark_as_scraped,
+        )
+        return {
+            "saved_count": result.get("saved_count", 0),
+            "skipped_count": result.get("skipped_count", 0),
+            "stats": result.get("stats", {}),
+        }
 
     async def abort(state: FacebookPipelineState) -> FacebookPipelineState:
         diagnosis = state.get("diagnosis") or {}
@@ -127,25 +106,23 @@ def build_facebook_graph(
             return "abort"
         return "ai_extract"
 
-    def route_after_filter(state: FacebookPipelineState) -> Literal["analyze", "__end__"]:
-        return "analyze" if state.get("candidates") else END
+    def route_after_filter(state: FacebookPipelineState) -> Literal["process", "__end__"]:
+        return "process" if state.get("candidates") else END
 
     graph = StateGraph(FacebookPipelineState)
     graph.add_node("use_dom_posts", use_dom_posts)
     graph.add_node("diagnose", diagnose_page)
     graph.add_node("ai_extract", ai_extract)
     graph.add_node("filter", filter_candidates)
-    graph.add_node("analyze", analyze_leads)
-    graph.add_node("persist", persist_leads)
+    graph.add_node("process", process_pipeline)
     graph.add_node("abort", abort)
 
     graph.add_edge(START, "use_dom_posts")
     graph.add_conditional_edges("use_dom_posts", route_after_dom, {"filter": "filter", "diagnose": "diagnose"})
     graph.add_conditional_edges("diagnose", route_after_diagnose, {"ai_extract": "ai_extract", "abort": "abort"})
     graph.add_edge("ai_extract", "filter")
-    graph.add_conditional_edges("filter", route_after_filter, {"analyze": "analyze", END: END})
-    graph.add_edge("analyze", "persist")
-    graph.add_edge("persist", END)
+    graph.add_conditional_edges("filter", route_after_filter, {"process": "process", END: END})
+    graph.add_edge("process", END)
     graph.add_edge("abort", END)
 
     return graph.compile()
@@ -156,18 +133,18 @@ async def run_facebook_pipeline(
     page_text: str,
     dom_posts: List[str],
     limit: int,
+    connector: DatabaseConnector,
     persist_lead: PersistFn,
     is_already_scraped: DedupCheckFn,
     mark_as_scraped: MarkScrapedFn,
 ) -> FacebookPipelineState:
-    graph = build_facebook_graph(persist_lead, is_already_scraped, mark_as_scraped)
+    graph = build_facebook_graph(connector, persist_lead, is_already_scraped, mark_as_scraped)
     initial: FacebookPipelineState = {
         "group_url": group_url,
         "page_text": page_text,
         "dom_posts": dom_posts,
         "posts": [],
         "candidates": [],
-        "leads": [],
         "saved_count": 0,
         "limit": limit,
     }

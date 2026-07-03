@@ -11,6 +11,7 @@ from backend.app.schemas import (
     BatchCategoryRequest,
     BatchDeleteRequest,
     CategoryOut,
+    EmbedBackfillResponse,
     PropertyCreate,
     PropertyOut,
     PropertyUpdate,
@@ -19,7 +20,10 @@ from backend.app.schemas import (
     ScrapingRequestUpdate,
     SettingsOut,
     SettingsUpdate,
+    SimilarPropertyMatch,
+    SimilarPropertyRequest,
 )
+from backend.app.services.vector_service import VectorService
 from backend.app.services.opportunity_service import OpportunityService
 
 router = APIRouter(prefix="/api")
@@ -72,12 +76,22 @@ async def upsert_property(payload: PropertyCreate, db: AsyncSession = Depends(ge
         existing.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(existing)
+        try:
+            await VectorService(db).upsert_property_embedding(existing)
+        except Exception:
+            pass
         return existing
 
     prop = Property(**data)
     db.add(prop)
     await db.commit()
     await db.refresh(prop)
+
+    try:
+        await VectorService(db).upsert_property_embedding(prop)
+    except Exception:
+        pass
+
     return prop
 
 
@@ -132,6 +146,45 @@ async def batch_update_category(payload: BatchCategoryRequest, db: AsyncSession 
         .values(category_id=payload.category_id, updated_at=datetime.now(timezone.utc))
     )
     await db.commit()
+
+
+@router.post("/properties/similar", response_model=List[SimilarPropertyMatch])
+async def find_similar_properties(payload: SimilarPropertyRequest, db: AsyncSession = Depends(get_db)):
+    service = VectorService(db)
+    if not service.embedder.available:
+        return []
+    return await service.find_similar(
+        payload.text,
+        limit=payload.limit,
+        min_similarity=payload.min_similarity,
+    )
+
+
+@router.post("/properties/{property_id}/embed", response_model=PropertyOut)
+async def embed_property(property_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Property).where(Property.id == property_id))
+    prop = result.scalar_one_or_none()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    service = VectorService(db)
+    if not service.embedder.available:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured for embeddings")
+
+    if not await service.upsert_property_embedding(prop):
+        raise HTTPException(status_code=500, detail="Failed to generate embedding")
+
+    await db.refresh(prop)
+    return prop
+
+
+@router.post("/properties/embed-backfill", response_model=EmbedBackfillResponse)
+async def embed_backfill(limit: int = 100, db: AsyncSession = Depends(get_db)):
+    service = VectorService(db)
+    if not service.embedder.available:
+        return EmbedBackfillResponse(embedded=0, available=False)
+    embedded = await service.backfill_missing(limit=min(limit, 500))
+    return EmbedBackfillResponse(embedded=embedded, available=True)
 
 
 @router.get("/settings", response_model=SettingsOut)
