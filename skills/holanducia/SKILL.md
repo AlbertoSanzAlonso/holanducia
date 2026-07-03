@@ -44,12 +44,23 @@ FIRECRAWL_API_KEY=...
 FB_USER=...
 FB_PASSWORD=...
 FB_SESSION_B64=...          # preferido sobre login automatizado
-FB_SCROLL_STEPS=55          # opcional, más scroll = más posts por grupo
+FB_SCROLL_STEPS=55
+
+# Sync diario (worker)
+DAILY_SYNC_ENABLED=true
+DAILY_SYNC_HOUR=7
+DAILY_SYNC_TARGET=200
 ```
 
-Volumen worker: `fb_session:/app/scrapers/debug` persiste cookies Playwright.
+## Sync diario automático
 
-## Despliegue VPS
+Worker encola misión `daily_sync` cada día (7:00 por defecto):
+- Re-scrapea todas las fuentes (modo sync ignora cache Redis)
+- **Crear** URL nueva · **Actualizar** si cambió `content_hash` · **Sin cambios** touch `last_seen_at`
+- **Baja** (`is_active=false`) si no visto y cobertura ≥ 25% por fuente
+- Siempre Postgres + `property_embeddings` al crear/actualizar
+
+## Pipeline por anuncio
 
 ```bash
 git pull
