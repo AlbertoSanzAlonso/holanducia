@@ -208,30 +208,49 @@ async def fetch_portal_page(
     crawl4ai_fetch: Callable[[str], Any],
 ) -> Optional[Dict[str, Any]]:
     """
-    Intenta cargar una página de portal. Si Crawl4AI cae en Akamai/Imperva,
-    prueba Firecrawl (solo índices por defecto) y luego Playwright stealth.
-    En fichas donde Playwright también falla, Firecrawl como último recurso.
-    Habitaclia: Firecrawl primero (Crawl4AI/Playwright siempre bloqueados).
+    Estrategia por portal:
+    - Habitaclia: Firecrawl primero (Crawl4AI/Playwright siempre bloqueados)
+    - Fotocasa/Pisos.com: Crawl4AI → Playwright (Firecrawl siempre bloqueado)
+    - Default: Crawl4AI → Firecrawl → Playwright
+    En fichas donde todo falla, Firecrawl como último recurso.
     """
     index_only = os.getenv("FIRECRAWL_INDEX_ONLY", "true").lower() == "true"
-    allow_firecrawl = (not index_only) or is_portal_index_url(url)
+    is_index = is_portal_index_url(url)
+    is_detail = not is_index
+    is_fotocasa = "fotocasa.es" in url
+    is_habitaclia = "habitaclia.com" in url
+    is_pisos = "pisos.com" in url
 
-    skip_crawl4ai = "habitaclia.com" in url and not is_portal_index_url(url)
+    # Habitaclia detail: Firecrawl directo
+    if is_habitaclia and is_detail:
+        logger.info("Habitaclia ficha — Firecrawl directo: %s", url[:70])
+        page = await fetch_with_firecrawl(url)
+        if page:
+            return page
+        return await fetch_with_playwright(url)
 
-    if not skip_crawl4ai:
+    # Fotocasa/Pisos: saltar Firecrawl (siempre bloqueado), Playwright desde VPS funciona
+    if is_fotocasa or is_pisos:
         page = await crawl4ai_fetch(url)
         if page and not is_antibot_content(markdown=page.get("markdown", ""), html=page.get("html", "")):
             if _index_has_listings(page, url):
                 return page
-            logger.warning("Crawl4AI devolvió índice sin fichas — probando Firecrawl: %s", url[:70])
-    else:
-        page = None
+        logger.info("Fotocasa/Pisos — Playwright directo (Firecrawl bloqueado): %s", url[:70])
+        page = await fetch_with_playwright(url)
+        if page:
+            return page
+        logger.warning("Playwright falló — Firecrawl último recurso: %s", url[:70])
+        return await fetch_with_firecrawl(url)
 
-    if not allow_firecrawl:
-        logger.info(
-            "Firecrawl reservado a índices (FIRECRAWL_INDEX_ONLY) — Playwright en ficha: %s",
-            url[:70],
-        )
+    # Índices y otros portales: cadena normal
+    page = await crawl4ai_fetch(url)
+    if page and not is_antibot_content(markdown=page.get("markdown", ""), html=page.get("html", "")):
+        if _index_has_listings(page, url):
+            return page
+        logger.warning("Crawl4AI devolvió índice sin fichas — probando Firecrawl: %s", url[:70])
+
+    if index_only and is_detail:
+        logger.info("Firecrawl reservado a índices — Playwright en ficha: %s", url[:70])
         page = await fetch_with_playwright(url)
         if page:
             return page
@@ -241,10 +260,7 @@ async def fetch_portal_page(
     if page:
         logger.warning("Crawl4AI devolvió página WAF — probando Firecrawl: %s", url[:70])
     else:
-        if skip_crawl4ai:
-            logger.info("Habitaclia ficha — Firecrawl directo: %s", url[:70])
-        else:
-            logger.warning("Crawl4AI falló — probando Firecrawl: %s", url[:70])
+        logger.warning("Crawl4AI falló — probando Firecrawl: %s", url[:70])
 
     page = await fetch_with_firecrawl(url)
     if page and _index_has_listings(page, url):
