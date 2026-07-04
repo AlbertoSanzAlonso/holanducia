@@ -153,7 +153,7 @@ def is_valid_listing_url(url: str) -> bool:
 
 
 def external_id_from_url(url: str) -> str:
-    path = urlparse(url).strip("/")
+    path = urlparse(url).path.strip("/")
     if not path:
         return url
     slug = path.split("/")[-1]
