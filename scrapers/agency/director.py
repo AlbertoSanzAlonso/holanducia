@@ -180,27 +180,31 @@ class DirectorAgent:
 
                 round_start = total_captured
 
-                if portal_urls and total_captured < quota:
+                remaining = quota - total_captured
+                fb_share = int(remaining * 0.4) if fb_groups and portal_urls else (remaining if fb_groups else 0)
+                portal_share = remaining - fb_share
+
+                if fb_groups and fb_share > 0 and total_captured < quota:
+                    import random
+
+                    random.shuffle(fb_groups)
+                    scraper = FacebookScraper(fb_groups[0], limit=fb_share)
+                    total_captured += await scraper.scrape_multiple(fb_groups)
+
+                if portal_urls and portal_share > 0 and total_captured < quota:
                     backend = os.getenv("SNIPER_BACKEND", "crawl4ai").lower()
                     logger.info("Sniper (%s) — %s portales", backend, len(portal_urls))
 
                     if backend == "firecrawl":
                         from scrapers.firecrawl_sniper import FirecrawlSniper
 
-                        sniper = FirecrawlSniper(limit=(quota - total_captured))
+                        sniper = FirecrawlSniper(limit=portal_share)
                     else:
                         from scrapers.crawl4ai_sniper import Crawl4AISniper
 
-                        sniper = Crawl4AISniper(limit=(quota - total_captured))
+                        sniper = Crawl4AISniper(limit=portal_share)
 
                     total_captured += await sniper.scrape_portals(portal_urls)
-
-                if fb_groups and total_captured < quota:
-                    import random
-
-                    random.shuffle(fb_groups)
-                    scraper = FacebookScraper(fb_groups[0], limit=(quota - total_captured))
-                    total_captured += await scraper.scrape_multiple(fb_groups)
 
                 if total_captured >= quota:
                     break
