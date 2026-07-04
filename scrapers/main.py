@@ -17,6 +17,16 @@ logging.basicConfig(
 logger = logging.getLogger("HolanducIA_Worker")
 
 
+async def _is_mission_cancelled(client: httpx.AsyncClient, api_url: str, request_id: int) -> bool:
+    try:
+        resp = await client.get(f"{api_url}/api/scraping-requests/{request_id}")
+        if resp.status_code == 200:
+            return resp.json().get("status") == "cancelled"
+    except Exception:
+        pass
+    return False
+
+
 async def scheduler_loop(client: httpx.AsyncClient, api_url: str) -> None:
     """Programa sync diario automático de todas las fuentes."""
     redis_client = None
@@ -103,7 +113,10 @@ async def main():
                     json={"status": "processing"},
                 )
 
-                total = await director.execute_mission(request=request)
+                total = await director.execute_mission(
+                    request=request,
+                    cancel_check=lambda: _is_mission_cancelled(client, api_url, request_id),
+                )
 
                 await client.patch(
                     f"{api_url}/api/scraping-requests/{request_id}",

@@ -89,7 +89,7 @@ class DirectorAgent:
     def _is_mass_mission(self, request: Dict[str, Any]) -> bool:
         return request.get("source_name") in MASS_MISSION_TYPES
 
-    async def execute_mission(self, request: Dict[str, Any] = None):
+    async def execute_mission(self, request: Dict[str, Any] = None, *, cancel_check=None):
         settings = await self.db.get_settings() or {}
         res = request or {}
         is_mass = self._is_mass_mission(res)
@@ -179,6 +179,10 @@ class DirectorAgent:
                     await asyncio.sleep(30 if is_mass else 60)
 
                 round_start = total_captured
+
+                if cancel_check and await cancel_check():
+                    logger.warning("Misión cancelada por el usuario — abortando tras %s anuncios", total_captured)
+                    break
 
                 remaining = quota - total_captured
                 fb_share = int(remaining * 0.4) if fb_groups and portal_urls else (remaining if fb_groups else 0)
