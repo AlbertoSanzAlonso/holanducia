@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 DEBUG_DIR = Path(__file__).parent / "debug"
 SESSION_FILE = DEBUG_DIR / "fb_session.json"
 
+EXPAND_POSTS_JS = """() => {
+    const buttons = document.querySelectorAll('div[role="button"]');
+    let clicked = 0;
+    buttons.forEach(btn => {
+        const t = (btn.innerText || '').trim().toLowerCase();
+        if (t === 'see more' || t === 'ver más' || t === 'see all' || t === 'more') {
+            btn.click();
+            clicked++;
+        }
+    });
+    return clicked;
+}"""
+
 EXTRACT_POSTS_JS = """() => {
     const posts = [];
     const seen = new Set();
@@ -551,12 +564,8 @@ class FacebookScraper(BaseScraper):
                 break
 
             try:
-                expand_btns = await page.get_by_text(
-                    re.compile(r"Ver más|See more", re.IGNORECASE)
-                ).all()
-                for btn in expand_btns[:8]:
-                    if await btn.is_visible():
-                        await btn.click(timeout=300)
+                await page.evaluate(EXPAND_POSTS_JS)
+                await page.wait_for_timeout(200)
             except Exception:
                 pass
 
