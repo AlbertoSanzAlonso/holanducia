@@ -27,6 +27,9 @@ LISTING_INTENTS = (
     "reduced", "bargain", "investment", "opportunity",
     "€", "euros", "euro", "price", "priced", "monthly",
     "private sale", "no agents", "direct sale",
+    # Surface area — strong indicator even when Facebook truncates the price
+    "m²", "m2", "metros cuadrados", "metros", "construidos", "construida",
+    "built", "sqm", "sq m",
 )
 
 NON_LISTING_HINTS = (

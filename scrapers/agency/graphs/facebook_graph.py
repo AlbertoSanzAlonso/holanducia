@@ -136,10 +136,14 @@ def build_facebook_graph(
 
     async def filter_candidates(state: FacebookPipelineState) -> FacebookPipelineState:
         posts = state.get("posts", [])
-        candidates = [
-            p for p in posts
-            if is_property_listing_text(_post_text(p))
-        ]
+        candidates = []
+        rejected_samples = []
+        for p in posts:
+            text = _post_text(p)
+            if is_property_listing_text(text):
+                candidates.append(p)
+            elif len(rejected_samples) < 3:
+                rejected_samples.append(text[:100].replace("\n", " "))
 
         logger.info(
             "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",
@@ -147,9 +151,11 @@ def build_facebook_graph(
             len(posts),
         )
         if not candidates and posts:
-            for i, post in enumerate(posts[:2]):
-                preview = _post_text(post)[:120].replace("\n", " ")
-                logger.warning("Post sin keywords #%s: %s…", i + 1, preview)
+            for i, s in enumerate(rejected_samples):
+                logger.warning("Post sin keywords #%s: %s…", i + 1, s)
+        elif len(candidates) < 5 and posts:
+            for s in rejected_samples:
+                logger.debug("Muestra post sin keywords: %s…", s)
 
         stats = dict(state.get("stats") or {})
         stats.update({"posts_total": len(posts), "keyword_candidates": len(candidates)})
