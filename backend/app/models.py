@@ -78,8 +78,7 @@ class UserSettings(Base):
     target_leads: Mapped[int] = mapped_column(Integer, default=10)
     mass_scrape_target: Mapped[int] = mapped_column(Integer, default=500)
     mass_fb_scroll_steps: Mapped[int] = mapped_column(Integer, default=100)
-    facebook_groups: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
-    facebook_group_names: Mapped[dict] = mapped_column(JSONB, default=dict)
+    facebook_groups: Mapped[List[dict]] = mapped_column(JSONB, default=list)
     portal_urls: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

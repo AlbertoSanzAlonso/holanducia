@@ -51,12 +51,21 @@ export default function SettingsView() {
     setLoading(true)
     try {
       const data = await api.getSettings()
-      if (data) setSettings({
+      if (data) {
+        let fbGroups = data.facebook_groups || []
+        if (fbGroups.length > 0 && typeof fbGroups[0] === 'string') {
+          fbGroups = fbGroups.map(id => ({
+            id,
+            name: data.facebook_group_names?.[id] || '',
+            enabled: true
+          }))
+        }
+        setSettings({
           ...data,
           cities: data.cities || [],
-          facebook_groups: data.facebook_groups || [],
-          facebook_group_names: data.facebook_group_names || {},
-      })
+          facebook_groups: fbGroups,
+        })
+      }
     } finally {
       setLoading(false)
     }
@@ -80,20 +89,25 @@ export default function SettingsView() {
   const addGroup = () => {
     if (!newGroup) return
     const cleanId = newGroup.replace('https://www.facebook.com/groups/', '').replace('https://m.facebook.com/groups/', '').split('/')[0].split('?')[0]
-    if (!settings.facebook_groups.includes(cleanId)) {
-      const updatedGroups = [...settings.facebook_groups, cleanId]
-      const updatedNames = { ...settings.facebook_group_names }
-      if (newGroupName.trim()) {
-        updatedNames[cleanId] = newGroupName.trim()
-      }
-      setSettings({ ...settings, facebook_groups: updatedGroups, facebook_group_names: updatedNames })
+    if (!settings.facebook_groups.some(g => g.id === cleanId)) {
+      const newGroupObj = { id: cleanId, name: newGroupName.trim() || '', enabled: true }
+      setSettings({ ...settings, facebook_groups: [...settings.facebook_groups, newGroupObj] })
     }
     setNewGroup('')
     setNewGroupName('')
   }
 
   const removeGroup = (id) => {
-    setSettings({ ...settings, facebook_groups: settings.facebook_groups.filter(g => g !== id) })
+    setSettings({ ...settings, facebook_groups: settings.facebook_groups.filter(g => g.id !== id) })
+  }
+
+  const toggleGroup = (id) => {
+    setSettings({
+      ...settings,
+      facebook_groups: settings.facebook_groups.map(g =>
+        g.id === id ? { ...g, enabled: !g.enabled } : g
+      )
+    })
   }
 
   const [notification, setNotification] = useState(null)
@@ -732,23 +746,26 @@ export default function SettingsView() {
                 {settings.facebook_groups.length === 0 && (
                   <p className="text-slate-400 text-xs font-medium m-auto">No hay grupos añadidos</p>
                 )}
-                {settings.facebook_groups.map(id => {
-                  const name = settings.facebook_group_names?.[id]
-                  return (
-                    <div key={id} className="bg-white border border-slate-100 px-4 py-2 rounded-xl flex items-center gap-3 shadow-sm group hover:border-blue-200 transition-all animate-in zoom-in-90">
-                      <div className="flex flex-col">
-                        {name && <span className="text-xs font-black text-slate-700 truncate max-w-[180px]">{name}</span>}
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">ID: {id}</span>
-                      </div>
-                      <button 
-                        onClick={() => removeGroup(id)}
-                        className="text-slate-300 hover:text-red-500 transition-all"
-                      >
-                        <X size={14} />
-                      </button>
+                {settings.facebook_groups.map(group => (
+                  <div key={group.id} className={`bg-white border px-4 py-2 rounded-xl flex items-center gap-3 shadow-sm group transition-all animate-in zoom-in-90 ${group.enabled ? 'border-slate-100 hover:border-blue-200' : 'border-red-200 opacity-60'}`}>
+                    <button
+                      onClick={() => toggleGroup(group.id)}
+                      className={`w-10 h-6 rounded-full transition-all relative ${group.enabled ? 'bg-blue-600' : 'bg-slate-300'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${group.enabled ? 'left-5' : 'left-1'}`} />
+                    </button>
+                    <div className="flex flex-col">
+                      {group.name && <span className="text-xs font-black text-slate-700 truncate max-w-[140px]">{group.name}</span>}
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{group.enabled ? 'Activo' : 'Desactivado'} · ID: {group.id}</span>
                     </div>
-                  )
-                })}
+                    <button
+                      onClick={() => removeGroup(group.id)}
+                      className="text-slate-300 hover:text-red-500 transition-all ml-1"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
 
               <button 

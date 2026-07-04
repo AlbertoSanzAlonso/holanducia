@@ -15,7 +15,11 @@ DEFAULT_CATEGORIES = [
     ("Descartado", "#64748b"),
 ]
 
-DEFAULT_FB_GROUPS = ["41757906864", "1018337428507491", "397742921612774"]
+DEFAULT_FB_GROUPS = [
+    {"id": "41757906864", "name": "", "enabled": True},
+    {"id": "1018337428507491", "name": "", "enabled": True},
+    {"id": "397742921612774", "name": "", "enabled": True},
+]
 
 MIGRATION_PGVECTOR = Path(__file__).resolve().parents[2] / "db" / "migrate_pgvector.sql"
 MIGRATION_SYNC = Path(__file__).resolve().parents[2] / "db" / "migrate_sync.sql"

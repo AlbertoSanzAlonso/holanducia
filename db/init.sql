@@ -63,8 +63,7 @@ CREATE TABLE user_settings (
     mass_scrape_target INTEGER DEFAULT 500,
     mass_fb_scroll_steps INTEGER DEFAULT 100,
     target_leads INTEGER DEFAULT 10,
-    facebook_groups TEXT[] DEFAULT ARRAY['41757906864', '1018337428507491', '397742921612774'],
-    facebook_group_names JSONB DEFAULT '{}'::jsonb,
+    facebook_groups JSONB DEFAULT '[{"id": "41757906864", "name": "", "enabled": true}, {"id": "1018337428507491", "name": "", "enabled": true}, {"id": "397742921612774", "name": "", "enabled": true}]'::jsonb,
     portal_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT single_settings_row CHECK (id = 1)

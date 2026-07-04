@@ -92,6 +92,12 @@ class PropertyOut(PropertyBase):
     updated_at: datetime
 
 
+class FacebookGroup(BaseModel):
+    id: str
+    name: str = ""
+    enabled: bool = True
+
+
 class SettingsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -105,8 +111,7 @@ class SettingsOut(BaseModel):
     target_leads: int = 10
     mass_scrape_target: int = 500
     mass_fb_scroll_steps: int = 100
-    facebook_groups: List[str] = Field(default_factory=list)
-    facebook_group_names: dict = Field(default_factory=dict)
+    facebook_groups: List[FacebookGroup] = Field(default_factory=list)
     portal_urls: List[str] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 
@@ -121,8 +126,7 @@ class SettingsUpdate(BaseModel):
     target_leads: Optional[int] = None
     mass_scrape_target: Optional[int] = None
     mass_fb_scroll_steps: Optional[int] = None
-    facebook_groups: Optional[List[str]] = None
-    facebook_group_names: Optional[dict] = None
+    facebook_groups: Optional[List[FacebookGroup]] = None
     portal_urls: Optional[List[str]] = None
 
 

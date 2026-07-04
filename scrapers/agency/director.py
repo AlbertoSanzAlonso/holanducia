@@ -27,25 +27,35 @@ def _facebook_enabled(settings: Dict[str, Any]) -> bool:
     return "facebook" in _enabled_portals(settings)
 
 
-def _resolve_fb_groups(settings: Dict[str, Any], res: Dict[str, Any]) -> List[str]:
-    """Grupos FB solo si Facebook está activo en fuentes o vienen explícitos en la petición."""
+def _resolve_fb_groups(settings: Dict[str, Any], res: Dict[str, Any]) -> tuple[List[str], dict]:
+    """Grupos FB solo si Facebook está activo en fuentes o vienen explícitos en la petición.
+    Returns (group_ids, group_names)"""
+    group_names = {}
+
     if res.get("groups") is not None:
         groups = res["groups"]
         if isinstance(groups, str):
-            return [g.strip() for g in groups.split(",") if g.strip()] if "," in groups else ([groups.strip()] if groups.strip() else [])
+            return ([g.strip() for g in groups.split(",") if g.strip()] if "," in groups else ([groups.strip()] if groups.strip() else [])), group_names
         if isinstance(groups, list):
-            return [str(g).strip() for g in groups if str(g).strip()]
-        return [str(groups)] if groups else []
+            return ([str(g).strip() for g in groups if str(g).strip()]), group_names
+        return ([str(groups)] if groups else []), group_names
 
     if not _facebook_enabled(settings):
-        return []
+        return [], group_names
 
     raw = settings.get("facebook_groups") or settings.get("groups")
     if isinstance(raw, str):
-        return [g.strip() for g in raw.split(",") if g.strip()] if "," in raw else ([raw.strip()] if raw.strip() else [])
+        return ([g.strip() for g in raw.split(",") if g.strip()] if "," in raw else ([raw.strip()] if raw.strip() else [])), group_names
     if isinstance(raw, list):
-        return [str(g).strip() for g in raw if str(g).strip()]
-    return [str(raw)] if raw else []
+        if len(raw) > 0 and isinstance(raw[0], dict):
+            for g in raw:
+                gid = str(g.get("id", "")).strip()
+                if gid:
+                    if g.get("enabled", True):
+                        group_names[gid] = g.get("name", "")
+            return list(group_names.keys()), group_names
+        return ([str(g).strip() for g in raw if str(g).strip()]), group_names
+    return ([str(raw)] if raw else []), group_names
 
 
 class DirectorAgent:
@@ -113,8 +123,7 @@ class DirectorAgent:
             )
             fb_scroll = int(os.getenv("FB_SCROLL_STEPS", "55"))
 
-        fb_groups = _resolve_fb_groups(settings, res)
-        fb_group_names = settings.get("facebook_group_names", {}) or {}
+        fb_groups, fb_group_names = _resolve_fb_groups(settings, res)
         portal_urls = res.get("portal_urls") or build_portal_urls(settings)
 
         if isinstance(portal_urls, str):
