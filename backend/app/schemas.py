@@ -27,6 +27,10 @@ class PropertyBase(BaseModel):
     has_parking: bool = False
     has_terrace: bool = False
     has_pool: bool = False
+    has_garden: bool = False
+    has_trastero: bool = False
+    garage_spots: Optional[int] = None
+    floor: Optional[int] = None
     is_individual: bool = False
     is_agency: bool = True
     description: Optional[str] = None
@@ -62,6 +66,10 @@ class PropertyUpdate(BaseModel):
     has_parking: Optional[bool] = None
     has_terrace: Optional[bool] = None
     has_pool: Optional[bool] = None
+    has_garden: Optional[bool] = None
+    has_trastero: Optional[bool] = None
+    garage_spots: Optional[int] = None
+    floor: Optional[int] = None
     is_individual: Optional[bool] = None
     is_agency: Optional[bool] = None
     description: Optional[str] = None

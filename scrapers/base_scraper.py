@@ -30,8 +30,12 @@ DEEP_PROPERTY_SCHEMA = {
         "rooms": {"type": "number", "description": "Número de dormitorios/habitaciones."},
         "bathrooms": {"type": "number", "description": "Número de baños"},
         "has_parking": {"type": "boolean", "description": "True si tiene parking/garaje"},
+        "garage_spots": {"type": "number", "description": "Número de plazas de garaje (null si no se menciona)"},
         "has_terrace": {"type": "boolean", "description": "True si tiene terraza/balcón"},
         "has_pool": {"type": "boolean", "description": "True si tiene piscina"},
+        "has_garden": {"type": "boolean", "description": "True si tiene jardín"},
+        "has_trastero": {"type": "boolean", "description": "True si tiene trastero"},
+        "floor": {"type": "number", "description": "Número de planta/piso/altura (null si no se menciona). Bajo=0, Ático=99"},
         "is_individual": {"type": "boolean", "description": "True si el vendedor es un PARTICULAR"},
         "description": {"type": "string", "description": "Descripción completa"},
         "images": {"type": "array", "items": {"type": "string"}}

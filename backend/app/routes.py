@@ -47,6 +47,7 @@ MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", "/app/media/properties"))
 PROPERTY_FIELDS = {
     "external_id", "url", "source", "title", "price", "city", "neighborhood", "address",
     "size_m2", "rooms", "bathrooms", "has_parking", "has_terrace", "has_pool",
+    "has_garden", "has_trastero", "garage_spots", "floor",
     "is_individual", "is_agency", "description", "images", "opportunity_score",
     "opportunity_reasons", "category_id", "catastro_ref", "year_built",
     "is_active", "last_seen_at", "content_hash",

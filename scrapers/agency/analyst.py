@@ -36,13 +36,14 @@ REGLAS ESTRICTAS:
 4. rooms / bathrooms: habitaciones y baños completos del anuncio.
 5. city: municipio. neighborhood: barrio/urbanización si aparece.
 6. description: texto limpio de la descripción del inmueble + características relevantes (piscina, terraza, garaje, placas solares, licencia turística). Sin legal boilerplate ni publicidad de la inmobiliaria.
-7. has_parking, has_terrace, has_pool: true/false según el anuncio.
-8. is_individual: true si es particular, false si es inmobiliaria/profesional.
-9. catastro_ref: referencia del anuncio si existe (ej. "000018").
-10. year_built: solo si hay año numérico claro; si dice "20-30 años" deja null.
+7. has_parking, garage_spots, has_terrace, has_pool, has_garden, has_trastero: true/false o número de plazas.
+8. floor: número de planta (0=bajo, null si no se menciona).
+9. is_individual: true si es particular, false si es inmobiliaria/profesional.
+10. catastro_ref: referencia del anuncio si existe (ej. "000018").
+11. year_built: solo si hay año numérico claro; si dice "20-30 años" deja null.
 
 Datos pre-extraídos (puedes corregirlos):
-{json.dumps({k: v for k, v in base.items() if k in {"title","price","city","neighborhood","size_m2","rooms","bathrooms","description","has_parking","has_terrace","has_pool","is_individual","catastro_ref"}}, ensure_ascii=False)[:3000]}
+{json.dumps({k: v for k, v in base.items() if k in {"title","price","city","neighborhood","size_m2","rooms","bathrooms","description","has_parking","garage_spots","has_terrace","has_pool","has_garden","has_trastero","floor","is_individual","catastro_ref"}}, ensure_ascii=False)[:3000]}
 
 Texto de la ficha:
 {(raw_content or "")[:14000]}
@@ -58,8 +59,12 @@ Devuelve SOLO JSON:
   "bathrooms": número o null,
   "size_m2": número o null,
   "has_parking": true/false,
+  "garage_spots": número o null,
   "has_terrace": true/false,
   "has_pool": true/false,
+  "has_garden": true/false,
+  "has_trastero": true/false,
+  "floor": número o null,
   "is_individual": true/false,
   "catastro_ref": "... o null",
   "year_built": número o null,
@@ -120,6 +125,8 @@ Devuelve SOLO JSON:
         3. CIUDAD/BARRIO: Extrae del texto; si no hay ciudad clara, null (no asumas Málaga).
         4. DESCRIPTION: Texto completo del anuncio con m², planta, extras, contacto. Copia el post literalmente.
         5. size_m2, rooms, bathrooms: extrae solo si aparecen explícitamente (null si no).
+        6. has_parking, garage_spots, has_terrace, has_pool, has_garden, has_trastero: extrae si se mencionan.
+        7. floor: número de planta (0=bajo, null=no mencionado).
 
         Devuelve SOLO un JSON:
         {{
@@ -131,6 +138,13 @@ Devuelve SOLO JSON:
             "rooms": número o null,
             "bathrooms": número o null,
             "size_m2": número o null,
+            "has_parking": true/false,
+            "garage_spots": número o null,
+            "has_terrace": true/false,
+            "has_pool": true/false,
+            "has_garden": true/false,
+            "has_trastero": true/false,
+            "floor": número o null,
             "images": [],
             "is_individual": true/false,
             "is_real_estate": true/false
@@ -215,9 +229,15 @@ Devuelve SOLO JSON:
                     data["is_agency"] = True
                 elif data.get("is_individual") is True:
                     data["is_agency"] = False
-                for bool_field in ("has_parking", "has_terrace", "has_pool"):
+                for bool_field in ("has_parking", "has_terrace", "has_pool", "has_garden", "has_trastero"):
                     if bool_field in data:
                         data[bool_field] = bool(data[bool_field])
+                for int_field in ("garage_spots", "floor"):
+                    try:
+                        if int_field in data and data[int_field] is not None:
+                            data[int_field] = int(data[int_field])
+                    except (ValueError, TypeError):
+                        data[int_field] = None
                 return data
 
             leads = data.get("properties", data) if isinstance(data, dict) else data

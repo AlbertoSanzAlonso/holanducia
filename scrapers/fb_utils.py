@@ -112,6 +112,57 @@ def extract_size_m2_from_text(text: str) -> Optional[float]:
     return None
 
 
+def extract_garage_spots_from_text(text: str) -> Optional[int]:
+    if not text:
+        return None
+    patterns = [
+        r"(\d+)\s*(?:plazas?\s*(?:de\s*)?(?:garaje|parking|aparcamiento))",
+        r"(?:garaje|parking|aparcamiento)\s*(?:de\s*)?(\d+)\s*plazas?",
+        r"(\d+)\s*(?:coches?|vehiculos?|cocheras?)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            spots = int(match.group(1))
+            if 1 <= spots <= 10:
+                return spots
+    if re.search(r"(?:tiene|con|incluye|dispone de)\s*(?:garaje|parking|aparcamiento|plaza)", text, re.IGNORECASE):
+        return 1
+    if re.search(r"\bgaraje\b|\bparking\b|\bplaza de garaje\b", text, re.IGNORECASE):
+        return 1
+    return None
+
+
+def extract_floor_from_text(text: str) -> Optional[int]:
+    if not text:
+        return None
+    if re.search(r"\bbajo\b", text, re.IGNORECASE):
+        return 0
+    if re.search(r"\b(?:ático|atico|penthouse)\b", text, re.IGNORECASE):
+        return 99
+    patterns = [
+        r"(\d+)[º°ª]\s*(?:planta|piso)",
+        r"(?:planta|piso)\s*(\d+)",
+        r"(\d+)[º°ª](?:\s|$)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            floor = int(match.group(1))
+            if 1 <= floor <= 50:
+                return floor
+    return None
+
+
+def extract_trastero_from_text(text: str) -> bool:
+    if not text:
+        return False
+    return bool(re.search(
+        r"\b(?:trastero|almacén|almacen|bodega|despensa)\b",
+        text, re.IGNORECASE,
+    ))
+
+
 def enrich_lead_from_raw(lead: Dict[str, Any], raw_text: str) -> Dict[str, Any]:
     price = float(lead.get("price") or 0)
     if price <= 0:
@@ -128,6 +179,21 @@ def enrich_lead_from_raw(lead: Dict[str, Any], raw_text: str) -> Dict[str, Any]:
         size = extract_size_m2_from_text(raw_text)
         if size:
             lead["size_m2"] = size
+
+    if not lead.get("garage_spots"):
+        spots = extract_garage_spots_from_text(raw_text)
+        if spots is not None:
+            lead["garage_spots"] = spots
+            lead["has_parking"] = spots > 0
+
+    if not lead.get("floor") and lead.get("floor") != 0:
+        floor = extract_floor_from_text(raw_text)
+        if floor is not None:
+            lead["floor"] = floor
+
+    if not lead.get("has_trastero"):
+        if extract_trastero_from_text(raw_text):
+            lead["has_trastero"] = True
 
     desc = (lead.get("description") or "").strip()
     title = (lead.get("title") or "").strip()
@@ -147,6 +213,14 @@ def quality_score(lead: Dict[str, Any], raw_text: str) -> int:
         score += 1
     if lead.get("bathrooms"):
         score += 1
+    if lead.get("garage_spots"):
+        score += 1
+    if lead.get("floor") is not None:
+        score += 1
+    score += 1 if lead.get("has_terrace") else 0
+    score += 1 if lead.get("has_pool") else 0
+    score += 1 if lead.get("has_garden") else 0
+    score += 1 if lead.get("has_trastero") else 0
     if lead.get("images"):
         score += 2
     if is_facebook_post_url(lead.get("url") or ""):
@@ -170,13 +244,19 @@ def is_quality_facebook_lead(lead: Dict[str, Any], raw_text: str, *, min_score: 
         import logging
         logger = logging.getLogger(__name__)
         logger.warning(
-            "FB calidad baja (score=%s/%s): price=%s rooms=%s size=%s baths=%s imgs=%s url=%s txt=%s — %s",
+            "FB calidad baja (score=%s/%s): price=%s rooms=%s size=%s baths=%s garage=%s floor=%s terr=%s pool=%s garden=%s trastero=%s imgs=%s url=%s txt=%s — %s",
             score,
             min_score,
             price,
             lead.get("rooms"),
             lead.get("size_m2"),
             lead.get("bathrooms"),
+            lead.get("garage_spots"),
+            lead.get("floor"),
+            lead.get("has_terrace"),
+            lead.get("has_pool"),
+            lead.get("has_garden"),
+            lead.get("has_trastero"),
             bool(lead.get("images")),
             bool(lead.get("url")),
             is_property_listing_text(raw_text),

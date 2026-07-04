@@ -1,0 +1,5 @@
+-- Añade campos nuevos a la tabla properties
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS has_garden BOOLEAN DEFAULT FALSE;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS has_trastero BOOLEAN DEFAULT FALSE;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS garage_spots INTEGER;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS floor INTEGER;
