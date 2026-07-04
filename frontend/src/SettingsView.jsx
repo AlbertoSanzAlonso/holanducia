@@ -152,7 +152,7 @@ export default function SettingsView() {
       source_name: 'Manual Trigger',
       target_leads: settings.max_leads_per_portal || 10,
       portal_urls: buildPortalUrls(settings),
-      groups: facebookOn ? (settings.facebook_groups || []) : [],
+      groups: facebookOn ? (settings.facebook_groups || []).map(g => typeof g === 'string' ? g : g.id).filter(Boolean) : [],
     })
 
     const sources = portals.filter((p) => p !== 'catastro').join(', ') || 'sin fuentes'
