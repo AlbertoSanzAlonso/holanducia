@@ -424,7 +424,7 @@ function App() {
              )}
           </section>
         ) : view === 'stats' ? (
-          <StatisticsView properties={properties} />
+          <StatisticsView properties={properties} onPropertySelect={setSelectedProperty} />
         ) : (
           <SettingsView />
         )}

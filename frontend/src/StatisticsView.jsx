@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   BarChart3, Building2, Flame, Home, MapPin, TrendingDown, TrendingUp, Users, Wallet,
 } from 'lucide-react'
 import { formatPrice } from './utils/propertyDisplay'
-import { computePropertyStats, getUniqueSources } from './utils/propertyStats'
+import { computePropertyStats, computeTopDeals, getUniqueSources, getZoneOptions } from './utils/propertyStats'
 
 const SOURCE_COLORS = {
   Facebook: '#1877F2',
@@ -24,14 +24,31 @@ function fmtNum(n, digits = 0) {
   return n.toLocaleString('es-ES', { maximumFractionDigits: digits })
 }
 
-export default function StatisticsView({ properties = [] }) {
+export default function StatisticsView({ properties = [], onPropertySelect }) {
   const allSources = useMemo(() => getUniqueSources(properties), [properties])
   const [selectedSources, setSelectedSources] = useState([])
+  const [topDealsZone, setTopDealsZone] = useState('')
 
   const stats = useMemo(
     () => computePropertyStats(properties, { sources: selectedSources }),
     [properties, selectedSources]
   )
+
+  const zoneOptions = useMemo(
+    () => getZoneOptions(properties, { sources: selectedSources }),
+    [properties, selectedSources]
+  )
+
+  const topDeals = useMemo(
+    () => computeTopDeals(properties, { sources: selectedSources, zone: topDealsZone, limit: 5 }),
+    [properties, selectedSources, topDealsZone]
+  )
+
+  useEffect(() => {
+    if (topDealsZone && !zoneOptions.includes(topDealsZone)) {
+      setTopDealsZone('')
+    }
+  }, [zoneOptions, topDealsZone])
 
   const toggleSource = (source) => {
     setSelectedSources((prev) =>
@@ -339,15 +356,37 @@ export default function StatisticsView({ properties = [] }) {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         <Panel title="Mejor €/m² (top 5)" icon={<TrendingDown size={18} />}>
-          {stats.topDeals.length === 0 ? (
-            <EmptyPanel text="Sin datos de m² suficientes" />
+          {zoneOptions.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                Zona
+              </label>
+              <select
+                value={topDealsZone}
+                onChange={(e) => setTopDealsZone(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-800 outline-none focus:border-[#00acee] focus:ring-2 focus:ring-[#00acee]/20"
+              >
+                <option value="">Todas las zonas</option>
+                {zoneOptions.map((zone) => (
+                  <option key={zone} value={zone}>{zone}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {topDeals.length === 0 ? (
+            <EmptyPanel text={topDealsZone ? 'Sin datos de m² en esta zona' : 'Sin datos de m² suficientes'} />
           ) : (
             <div className="space-y-3">
-              {stats.topDeals.map((p, i) => (
-                <div key={p.id} className="flex items-start gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                  <span className="text-2xl font-black text-slate-200">#{i + 1}</span>
+              {topDeals.map((p, i) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onPropertySelect?.(p)}
+                  className="w-full flex items-start gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left hover:bg-white hover:border-[#00acee]/40 hover:shadow-md transition-all cursor-pointer group"
+                >
+                  <span className="text-2xl font-black text-slate-200 group-hover:text-[#00acee]/30">#{i + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-slate-900 line-clamp-1">{p.title || 'Sin título'}</p>
+                    <p className="text-sm font-black text-slate-900 line-clamp-2 group-hover:text-[#00acee]">{p.title || 'Sin título'}</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
                       {p.source} · {p.city || '—'} · {p.size_m2 ? `${p.size_m2} m²` : '—'}
                     </p>
@@ -356,7 +395,7 @@ export default function StatisticsView({ properties = [] }) {
                     <p className="text-sm font-black text-emerald-600">{fmtNum(p.m2Price, 0)} €/m²</p>
                     <p className="text-xs font-bold text-slate-500">{formatPrice(p.price)}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

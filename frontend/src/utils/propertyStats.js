@@ -35,6 +35,30 @@ function zoneLabel(p) {
   return city || neighborhood || 'Sin ubicación'
 }
 
+function filterBySources(items, sources = []) {
+  if (!sources.length) return items
+  const sourceSet = new Set(sources.map(normalizeSource))
+  return items.filter((p) => sourceSet.has(normalizeSource(p.source)))
+}
+
+export function getZoneOptions(properties, { sources = [] } = {}) {
+  const items = filterBySources(properties, sources)
+  const zones = new Set(items.map(zoneLabel))
+  return [...zones].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
+export function computeTopDeals(properties, { sources = [], zone = '', limit = 5 } = {}) {
+  let items = filterBySources(properties, sources)
+  if (zone) {
+    items = items.filter((p) => zoneLabel(p) === zone)
+  }
+  return items
+    .map((p) => ({ ...p, m2Price: pricePerM2(p) }))
+    .filter((p) => p.m2Price != null)
+    .sort((a, b) => a.m2Price - b.m2Price)
+    .slice(0, limit)
+}
+
 function buildByZone(items, limit = 12) {
   const byZoneMap = new Map()
   for (const p of items) {
@@ -154,11 +178,7 @@ export function computePropertyStats(properties, { sources = [] } = {}) {
     pool: items.filter((p) => p.has_pool).length,
   }
 
-  const topDeals = items
-    .map((p) => ({ ...p, m2Price: pricePerM2(p) }))
-    .filter((p) => p.m2Price != null)
-    .sort((a, b) => a.m2Price - b.m2Price)
-    .slice(0, 5)
+  const topDeals = computeTopDeals(items, { limit: 5 })
 
   const maxSourceCount = bySource.length ? Math.max(...bySource.map((s) => s.count)) : 0
   const maxZoneCount = byZone.length ? Math.max(...byZone.map((z) => z.count)) : 0
