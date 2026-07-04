@@ -47,6 +47,9 @@ def is_property_listing_text(text: str) -> bool:
 
     if any(hint in lower for hint in NON_LISTING_HINTS):
         has_property = any(t in lower for t in PROPERTY_TYPES)
+        has_price = bool(extract_price_from_text(text))
+        if has_property and has_price:
+            return True
         has_intent = any(i in lower for i in ("vendo", "alquilo", "se vende", "se alquila", "en venta", "en alquiler"))
         if not (has_property and has_intent):
             return False
