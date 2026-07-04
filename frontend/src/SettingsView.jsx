@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Save, RefreshCw, Plus, X, Globe, Settings2, Database, Sparkles, AlertTriangle, Square, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from './api'
@@ -32,18 +32,6 @@ export default function SettingsView() {
     const interval = setInterval(fetchJobs, 10000)
     return () => clearInterval(interval)
   }, [])
-
-  useEffect(() => {
-    if (!selectedJob || selectedJob.status === 'completed' || selectedJob.status === 'cancelled') return
-    const poll = setInterval(async () => {
-      try {
-        const jobs = await api.listScrapingRequests()
-        const updated = jobs?.find(j => j.id === selectedJob.id)
-        if (updated) setSelectedJob(updated)
-      } catch {}
-    }, 5000)
-    return () => clearInterval(poll)
-  }, [selectedJob?.id, selectedJob?.status])
 
   const refreshStats = async () => {
     setStatsLoading(true)
@@ -245,18 +233,6 @@ export default function SettingsView() {
   }
 
   if (loading) return <div className="p-12 text-slate-400 font-medium italic">Sincronizando sistemas...</div>
-
-  const jobProgress = useMemo(() => {
-    if (!selectedJob) return null
-    const msg = selectedJob.error_message || ''
-    const match = msg.match(/(\d+)\/(\d+)\s*en\s*BD/)
-    return {
-      current: match ? parseInt(match[1], 10) : null,
-      target: match ? parseInt(match[2], 10) : selectedJob.target_leads,
-      pct: match ? Math.min(100, Math.round((parseInt(match[1], 10) / parseInt(match[2], 10)) * 100)) : null,
-      msg,
-    }
-  }, [selectedJob])
 
   return (
     <div className="p-8 lg:p-12 max-w-2xl animate-in fade-in duration-500 pb-32">
@@ -574,28 +550,6 @@ export default function SettingsView() {
                     </div>
                   </div>
 
-                  {selectedJob.status === 'processing' && jobProgress && (
-                      <div className="p-4 bg-blue-50 rounded-2xl border border-blue-200 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[10px] uppercase tracking-widest font-black text-blue-600">Progreso en vivo</p>
-                          {jobProgress.current !== null && (
-                            <p className="text-sm font-black text-blue-700">{jobProgress.current}/{jobProgress.target}</p>
-                          )}
-                        </div>
-                        {jobProgress.pct !== null && (
-                          <div className="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-500 rounded-full transition-all duration-700"
-                              style={{ width: `${jobProgress.pct}%` }}
-                            />
-                          </div>
-                        )}
-                        {jobProgress.msg && (
-                          <p className="text-[10px] text-blue-700 font-medium leading-relaxed">{jobProgress.msg}</p>
-                        )}
-                      </div>
-                    )}
-
                   {selectedJob.processed_at && (
                     <div className="p-4 bg-slate-50 rounded-2xl">
                       <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1">
@@ -647,9 +601,11 @@ export default function SettingsView() {
                     </div>
                   )}
 
-                  {selectedJob.error_message && selectedJob.status !== 'processing' && (
-                    <div className={`p-4 rounded-2xl ${selectedJob.status === 'completed' ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
-                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-1">Resultado</p>
+                  {selectedJob.error_message && (
+                    <div className={`p-4 rounded-2xl ${selectedJob.status === 'completed' ? 'bg-emerald-50 border border-emerald-200' : selectedJob.status === 'processing' ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'}`}>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-1">
+                        {selectedJob.status === 'processing' ? 'Estado' : 'Resultado'}
+                      </p>
                       <p className="text-xs font-medium text-slate-700">{selectedJob.error_message}</p>
                     </div>
                   )}
