@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api, API_URL } from './api'
 import { 
-  Search, MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
+  MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
   Eye, Mail, MoreHorizontal, ChevronRight, ChevronLeft, Menu, X,
   ShieldCheck, AlertTriangle, Trash2, CheckCircle2, FolderHeart, Tag,
   BarChart3, Settings as SettingsIcon, LayoutGrid, ListPlus, Edit3, Bookmark, Images
@@ -214,49 +214,6 @@ function App() {
       </aside>
 
       <main className="flex-1 flex flex-col lg:ml-80 min-w-0">
-        {/* Cinema Hero Section */}
-        <div className="relative min-h-[500px] bg-[#0f172a] overflow-hidden flex flex-col justify-center px-6 lg:px-16 py-24">
-          <div className="absolute inset-0 opacity-30 pointer-events-none">
-            <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-[#00acee] blur-[150px] rounded-full" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#4f46e5] blur-[130px] rounded-full" />
-          </div>
-          
-          <div className="relative z-10">
-            <motion.span 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="inline-block text-[#00acee] text-xs font-black tracking-[0.4em] uppercase mb-6"
-            >
-              Intelligence Platform v2.0
-            </motion.span>
-            <motion.h1 
-              initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}
-              className="text-5xl sm:text-7xl lg:text-8xl font-black text-white tracking-tighter leading-[0.9]"
-            >
-              Analiza el <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00acee] to-[#818cf8]">Mercado Vivo.</span>
-            </motion.h1>
-            
-            <div className="mt-16 w-full max-w-3xl">
-               <div className="bg-white/10 backdrop-blur-2xl rounded-[2.5rem] p-3 shadow-2xl border border-white/10 flex flex-col sm:flex-row items-center gap-2">
-                  <div className="hidden sm:flex pl-6 text-white/30"><Search size={28} /></div>
-                  <input 
-                    type="text" 
-                    placeholder="Busca por título, barrio o descripción..." 
-                    value={filters.title}
-                    onChange={(e) => setFilters((f) => ({ ...f, title: e.target.value }))}
-                    className="w-full py-5 px-6 sm:px-4 bg-transparent outline-none text-xl font-bold text-white placeholder:text-white/20"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { setView('dashboard'); setFiltersExpanded(true); window.scrollTo({ top: 480, behavior: 'smooth' }) }}
-                    className="w-full sm:w-auto bg-[#00acee] text-white px-10 py-5 rounded-[1.8rem] font-black uppercase text-xs tracking-widest hover:bg-[#009bd6] transition-all active:scale-95 shadow-xl shadow-[#00acee/20]"
-                  >
-                    Buscar
-                  </button>
-               </div>
-            </div>
-          </div>
-        </div>
-
         {/* Security Block Alert */}
         <AnimatePresence>
           {securityBlock && (
@@ -659,12 +616,6 @@ function SidebarContent({ setView, setFilter, setSelectedCategoryId, setSelected
             ))}
         </div>
       </nav>
-
-      <div className="p-12 mt-auto">
-         <div className="bg-white/5 p-6 rounded-3xl border border-white/5 text-center">
-            <span className="text-[10px] font-black text-white/30 tracking-[0.2em] uppercase">Enterprise Edition v2</span>
-         </div>
-      </div>
     </div>
   )
 }

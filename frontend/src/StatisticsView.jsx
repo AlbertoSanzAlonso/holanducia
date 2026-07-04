@@ -157,21 +157,119 @@ export default function StatisticsView({ properties = [] }) {
         </Panel>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-12">
-        <Panel title="Por localidad" icon={<MapPin size={18} />}>
-          {stats.byCity.length === 0 ? (
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
+        <Panel title="Precio medio por zona" icon={<MapPin size={18} />}>
+          {stats.byZone.length === 0 ? (
             <EmptyPanel />
           ) : (
-            <div className="space-y-3">
-              {stats.byCity.map((row) => (
-                <div key={row.city} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-                  <div>
-                    <p className="text-sm font-black text-slate-800">{row.city}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">{row.count} ofertas</p>
+            <div className="space-y-5">
+              {stats.byZone.map((row) => (
+                <div key={row.zone}>
+                  <div className="flex justify-between items-end mb-2 gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-slate-900 truncate">{row.zone}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {row.count} ofertas · mediana {formatPrice(row.medianPrice)}
+                      </p>
+                    </div>
+                    <p className="text-sm font-black text-[#00acee] shrink-0">{formatPrice(row.avgPrice)}</p>
                   </div>
-                  <p className="text-sm font-black text-[#00acee]">{formatPrice(row.avgPrice)}</p>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#00acee] rounded-full transition-all duration-700"
+                      style={{
+                        width: `${stats.maxZoneCount ? (row.count / stats.maxZoneCount) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                  {row.avgM2Price != null && (
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2">
+                      €/m² medio: {fmtNum(row.avgM2Price)} €
+                    </p>
+                  )}
                 </div>
               ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Oportunidades por zona" icon={<Flame size={18} />}>
+          {stats.byZone.length === 0 ? (
+            <EmptyPanel />
+          ) : (
+            <div className="space-y-5">
+              {[...stats.byZone]
+                .sort((a, b) => b.hotCount - a.hotCount || b.avgScore - a.avgScore)
+                .map((row) => (
+                  <div key={`hot-${row.zone}`}>
+                    <div className="flex justify-between items-end mb-2 gap-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-slate-900 truncate">{row.zone}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          {row.hotCount} TOP · {row.warmCount} interesantes · score {fmtNum(row.avgScore, 1)}
+                        </p>
+                      </div>
+                      <p className="text-sm font-black text-orange-500 shrink-0">
+                        {fmtNum(row.hotPct, 0)}% TOP
+                      </p>
+                    </div>
+                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden flex">
+                      <div
+                        className="h-full bg-orange-500 rounded-l-full transition-all duration-700"
+                        style={{
+                          width: `${stats.maxZoneHot ? (row.hotCount / stats.maxZoneHot) * 100 : 0}%`,
+                        }}
+                      />
+                      <div
+                        className="h-full bg-[#00acee] transition-all duration-700"
+                        style={{
+                          width: `${stats.maxZoneHot ? (row.warmCount / stats.maxZoneHot) * 60 : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-12">
+        <Panel title="Resumen por zona" icon={<MapPin size={18} />} className="xl:col-span-3">
+          {stats.byZone.length === 0 ? (
+            <EmptyPanel />
+          ) : (
+            <div className="overflow-x-auto -mx-2">
+              <table className="w-full min-w-[720px] text-left">
+                <thead>
+                  <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                    <th className="py-4 px-3">Zona</th>
+                    <th className="py-4 px-3 text-right">Ofertas</th>
+                    <th className="py-4 px-3 text-right">Precio medio</th>
+                    <th className="py-4 px-3 text-right">Mediana</th>
+                    <th className="py-4 px-3 text-right">€/m²</th>
+                    <th className="py-4 px-3 text-right">TOP (≥80)</th>
+                    <th className="py-4 px-3 text-right">Interesantes</th>
+                    <th className="py-4 px-3 text-right">Score medio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.byZone.map((row) => (
+                    <tr key={row.zone} className="border-b border-slate-50 hover:bg-slate-50/50">
+                      <td className="py-4 px-3 text-sm font-black text-slate-900">{row.zone}</td>
+                      <td className="py-4 px-3 text-right text-sm font-bold text-slate-600">{row.count}</td>
+                      <td className="py-4 px-3 text-right text-sm font-black text-[#00acee]">{formatPrice(row.avgPrice)}</td>
+                      <td className="py-4 px-3 text-right text-sm font-bold text-slate-600">{formatPrice(row.medianPrice)}</td>
+                      <td className="py-4 px-3 text-right text-sm font-bold text-slate-600">
+                        {row.avgM2Price ? `${fmtNum(row.avgM2Price)} €` : '—'}
+                      </td>
+                      <td className="py-4 px-3 text-right text-sm font-black text-orange-500">{row.hotCount}</td>
+                      <td className="py-4 px-3 text-right text-sm font-bold text-slate-600">{row.warmCount}</td>
+                      <td className="py-4 px-3 text-right text-sm font-bold text-slate-600">{fmtNum(row.avgScore, 1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Panel>

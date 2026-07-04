@@ -26,6 +26,48 @@ function pricePerM2(p) {
   return price / size
 }
 
+function zoneLabel(p) {
+  const city = (p.city || '').trim()
+  const neighborhood = (p.neighborhood || '').trim()
+  if (neighborhood && city && neighborhood.toLowerCase() !== city.toLowerCase()) {
+    return `${neighborhood} (${city})`
+  }
+  return city || neighborhood || 'Sin ubicación'
+}
+
+function buildByZone(items, limit = 12) {
+  const byZoneMap = new Map()
+  for (const p of items) {
+    const zone = zoneLabel(p)
+    if (!byZoneMap.has(zone)) byZoneMap.set(zone, [])
+    byZoneMap.get(zone).push(p)
+  }
+
+  return [...byZoneMap.entries()]
+    .map(([zone, group]) => {
+      const groupPrices = group.map((p) => num(p.price)).filter((v) => v != null && v > 0)
+      const groupScores = group.map((p) => num(p.opportunity_score)).filter((v) => v != null)
+      const hotCount = group.filter((p) => (p.opportunity_score ?? 0) >= 80).length
+      const warmCount = group.filter((p) => {
+        const s = p.opportunity_score ?? 0
+        return s >= 60 && s < 80
+      }).length
+      return {
+        zone,
+        count: group.length,
+        avgPrice: avg(groupPrices),
+        medianPrice: median(groupPrices),
+        avgM2Price: avg(group.map(pricePerM2).filter((v) => v != null)),
+        avgScore: avg(groupScores),
+        hotCount,
+        warmCount,
+        hotPct: group.length ? (hotCount / group.length) * 100 : 0,
+      }
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit)
+}
+
 export function getUniqueSources(properties) {
   const values = new Set()
   for (const p of properties) {
@@ -78,20 +120,7 @@ export function computePropertyStats(properties, { sources = [] } = {}) {
     })
     .sort((a, b) => b.count - a.count)
 
-  const byCityMap = new Map()
-  for (const p of items) {
-    const city = (p.city || p.neighborhood || 'Sin ubicación').trim()
-    if (!byCityMap.has(city)) byCityMap.set(city, [])
-    byCityMap.get(city).push(p)
-  }
-
-  const byCity = [...byCityMap.entries()]
-    .map(([city, group]) => {
-      const groupPrices = group.map((p) => num(p.price)).filter((v) => v != null && v > 0)
-      return { city, count: group.length, avgPrice: avg(groupPrices) }
-    })
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8)
+  const byZone = buildByZone(items)
 
   const priceBuckets = [
     { label: '< 150k', min: 0, max: 150000, count: 0 },
@@ -132,6 +161,8 @@ export function computePropertyStats(properties, { sources = [] } = {}) {
     .slice(0, 5)
 
   const maxSourceCount = bySource.length ? Math.max(...bySource.map((s) => s.count)) : 0
+  const maxZoneCount = byZone.length ? Math.max(...byZone.map((z) => z.count)) : 0
+  const maxZoneHot = byZone.length ? Math.max(...byZone.map((z) => z.hotCount), 1) : 1
 
   return {
     total: items.length,
@@ -147,12 +178,14 @@ export function computePropertyStats(properties, { sources = [] } = {}) {
     avgRooms: avg(rooms),
     avgScore: avg(scores),
     bySource,
-    byCity,
+    byZone,
     priceBuckets,
     opportunity,
     sellerType,
     features,
     topDeals,
     maxSourceCount,
+    maxZoneCount,
+    maxZoneHot,
   }
 }
