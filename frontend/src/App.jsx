@@ -154,7 +154,7 @@ function App() {
           type: 'completed',
           message: data.error_message || 'Scraping completado — lista actualizada.',
         })
-        setTimeout(() => setScrapingNotice(null), 8000)
+        setTimeout(() => setScrapingNotice(null), 5000)
       } else if (data?.status === 'completed' && prevStatus !== 'completed') {
         setScrapingNotice(null)
       } else if (!data || data.status === 'pending' || data.status === 'cancelled') {
@@ -290,8 +290,14 @@ function App() {
                 <RefreshCw size={20} className="animate-spin shrink-0" />
                 <p className="text-sm font-bold">{scrapingNotice.message}</p>
                 <span className="text-[10px] font-black uppercase tracking-widest opacity-80 ml-auto hidden sm:inline">
-                  {properties.length} en BD · actualizando al terminar
+                  {properties.length} en BD
                 </span>
+                <button
+                  onClick={() => setScrapingNotice(null)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-all shrink-0"
+                >
+                  <X size={16} />
+                </button>
               </div>
             </motion.div>
           )}
@@ -306,8 +312,14 @@ function App() {
                 <CheckCircle2 size={20} className="shrink-0" />
                 <p className="text-sm font-bold">{scrapingNotice.message}</p>
                 <span className="text-[10px] font-black uppercase tracking-widest opacity-90 ml-auto">
-                  {properties.length} en BD · {filteredProperties.length} visibles con filtros actuales
+                  {properties.length} en BD
                 </span>
+                <button
+                  onClick={() => setScrapingNotice(null)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-all shrink-0"
+                >
+                  <X size={16} />
+                </button>
               </div>
             </motion.div>
           )}
