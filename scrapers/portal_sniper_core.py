@@ -53,6 +53,11 @@ async def discover_from_index(
 ) -> List[str]:
     data = await fetch_page(index_url)
     if not data:
+        logger.error(
+            "Índice inaccesible %s — Akamai/Imperva bloqueó el worker. "
+            "Añade FIRECRAWL_API_KEY en Coolify o prueba otro portal.",
+            index_url[:60],
+        )
         return []
     listing_urls = extract_listing_urls(
         data.get("html") or "",

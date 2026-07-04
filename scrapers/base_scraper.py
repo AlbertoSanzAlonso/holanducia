@@ -119,18 +119,30 @@ class BaseScraper(ABC):
             logger.info(f"⏭️ Skipping (Already in Redis): {url}")
             return None
 
-        logger.info(f"🕷️ Crawl4AI Scan: {url}")
+        if schema:
+            logger.info(f"🕷️ Crawl4AI Scan (schema): {url}")
+            try:
+                from scrapers.crawl4ai_client import Crawl4AIClient
 
-        try:
-            from scrapers.crawl4ai_client import Crawl4AIClient
-
-            client = Crawl4AIClient()
-            if schema:
+                client = Crawl4AIClient()
                 return await client.scrape_with_schema(url, schema)
-            return await client.scrape_page(url)
+            except Exception as e:
+                logger.warning(f"Crawl4AI schema scan failed for {url}: {e}")
+                return None
+
+        logger.info(f"🕷️ Portal fetch: {url}")
+        try:
+            from scrapers.portal_fetcher import fetch_portal_page
+
+            return await fetch_portal_page(url, crawl4ai_fetch=self._crawl4ai_page_raw)
         except Exception as e:
-            logger.warning(f"Crawl4AI scan failed for {url}: {e}")
+            logger.warning(f"Portal fetch failed for {url}: {e}")
             return None
+
+    async def _crawl4ai_page_raw(self, url: str) -> Optional[Dict[str, Any]]:
+        from scrapers.crawl4ai_client import Crawl4AIClient
+
+        return await Crawl4AIClient().scrape_page(url)
 
     async def scrape_with_firecrawl(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         skip_cache = is_portal_index_url(url) or await self._needs_portal_rescrape(url)
