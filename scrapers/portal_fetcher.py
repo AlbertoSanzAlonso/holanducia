@@ -85,13 +85,13 @@ async def fetch_with_firecrawl(url: str) -> Optional[Dict[str, Any]]:
     if not api_key:
         return None
 
-    is_index = is_portal_index_url(url)
     spanish = _is_spanish_portal(url)
 
     payload: Dict[str, Any] = {
         "url": url,
         "formats": ["markdown", "html"],
-        "onlyMainContent": not is_index,
+        "onlyMainContent": False,
+        "waitFor": 3000,
     }
 
     if spanish:
