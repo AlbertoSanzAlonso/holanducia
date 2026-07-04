@@ -97,21 +97,25 @@ def build_facebook_graph(
         posts = []
         dom_urls = state.get("dom_urls") or []
         dom_images = state.get("dom_images") or []
+        imgs_per_post = max(1, len(dom_images) // max(len(raw_posts), 1)) if dom_images else 0
         for i, raw in enumerate(raw_posts):
             normalized = _normalize_post(raw)
             if not normalized:
                 continue
             if not normalized.get("url") and i < len(dom_urls):
                 normalized["url"] = dom_urls[i]
-            if not normalized.get("images") and dom_images:
-                normalized["images"] = list(dom_images)
+            if not normalized.get("images") and imgs_per_post > 0:
+                start = i * imgs_per_post
+                end = start + imgs_per_post
+                normalized["images"] = dom_images[start:end]
             posts.append(normalized)
 
         with_url = sum(1 for p in posts if p.get("url"))
         with_img = sum(1 for p in posts if p.get("images"))
+        total_imgs = sum(len(p.get("images") or []) for p in posts)
         logger.info(
-            "LangGraph [ai_extract]: Scout extrajo %s posts vía IA (%s con enlace, %s con foto)",
-            len(posts), with_url, with_img,
+            "LangGraph [ai_extract]: Scout extrajo %s posts vía IA (%s con enlace, %s con foto, %s imgs totales)",
+            len(posts), with_url, with_img, total_imgs,
         )
         return {"posts": posts, "extraction_method": "ai", "ai_attempted": True}
 
