@@ -369,6 +369,7 @@ class FacebookScraper(BaseScraper):
 
                 dom_posts, page_text, scroll_pos, dom_urls, dom_images = await self._scroll_and_collect(page)
                 dom_posts = await self._host_images_for_posts(page, dom_posts)
+                dom_images = await self._host_dom_images(page, dom_images, group_url)
 
                 if not dom_posts:
                     await self._save_debug_artifacts(page, group_id)
@@ -711,6 +712,14 @@ class FacebookScraper(BaseScraper):
             hosted = await host_facebook_images(images, key, page=page)
             if hosted:
                 post["images"] = hosted
+        return posts
+
+    async def _host_dom_images(self, page, image_urls: list, group_url: str) -> list:
+        if not image_urls:
+            return []
+        key = group_url.rstrip("/").split("/")[-1][:40] or "fb_group"
+        hosted = await host_facebook_images(image_urls, key, page=page)
+        return hosted or image_urls
         return posts
 
     async def _save_debug_artifacts(self, page, group_id):
