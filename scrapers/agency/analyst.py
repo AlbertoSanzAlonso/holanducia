@@ -7,6 +7,49 @@ from scrapers.agency.llm_client import chat_completion, has_llm_key
 
 logger = logging.getLogger(__name__)
 
+# Mapeo de ubicaciones conocidas de la Costa del Sol a sus ciudades
+COSTA_DEL_SOL_LOCATIONS = {
+    # Marbella
+    "marbella": "Marbella", "puerto banús": "Marbella", "puerto banus": "Marbella",
+    "banús": "Marbella", "banus": "Marbella", "marina banús": "Marbella",
+    "marina banus": "Marbella", "soto de marbella": "Marbella",
+    "san pedro de alcántara": "Marbella", "san pedro": "Marbella",
+    "nueva andalucía": "Marbella", "nueva andalucia": "Marbella",
+    "las chapas": "Marbella", "elviria": "Marbella",
+    # Fuengirola
+    "fuengirola": "Fuengirola", "los pacos": "Fuengirola",
+    "miramar": "Fuengirola", "carvajal": "Fuengirola",
+    # Benalmádena
+    "benalmádena": "Benalmádena", "benalmadena": "Benalmádena",
+    "benalmádena costa": "Benalmádena", "benalmadena costa": "Benalmádena",
+    "benalmádena pueblo": "Benalmádena", "benalmadena pueblo": "Benalmádena",
+    "arroyo de la miel": "Benalmádena", "torrequebrada": "Benalmádena",
+    # Mijas
+    "mijas": "Mijas", "mijas golf": "Mijas", "mijas costa": "Mijas",
+    "mijas pueblo": "Mijas", "la cala": "Mijas", "la cala de mijas": "Mijas",
+    "rinconcillo": "Mijas", "calahonda": "Mijas",
+    # Estepona
+    "estepona": "Estepona", "cancelada": "Estepona",
+    "selwo": "Estepona", "atalaya": "Estepona",
+    # Málaga capital
+    "málaga": "Málaga", "malaga": "Málaga", "centro histórico": "Málaga",
+    "soho": "Málaga", "la malagueta": "Málaga", "el palo": "Málaga",
+    "pedregalejo": "Málaga", "teatinos": "Málaga", "cruz de humilladero": "Málaga",
+    # Torremolinos
+    "torremolinos": "Torremolinos", "playamar": "Torremolinos",
+    "los álamos": "Torremolinos", "los alamos": "Torremolinos",
+    # Rincón de la Victoria
+    "rancón de la victoria": "Rincón de la Victoria", "rincon de la victoria": "Rincón de la Victoria",
+    "calafate": "Rincón de la Victoria",
+    # Casares
+    "casares": "Casares", "casares costa": "Casares",
+    # Manilva
+    "manilva": "Manilva", "san luis de sabinillas": "Manilva",
+    # Vélez-Málaga
+    "vélez-málaga": "Vélez-Málaga", "velez-malaga": "Vélez-Málaga",
+    "caleta de vélez": "Vélez-Málaga", "torre del mar": "Vélez-Málaga",
+}
+
 class AnalystAgent:
     def __init__(self):
         self.llm_key = has_llm_key()
@@ -122,7 +165,10 @@ Devuelve SOLO JSON:
         REGLAS DE ORO:
         1. TÍTULO: Profesional, específico (zona + tipo + habitaciones). NUNCA genérico tipo "Propiedad en X".
         2. PRECIO: Número en euros del anuncio. Si no hay precio explícito, pon 0 (no inventes).
-        3. CIUDAD/BARRIO: Extrae del texto; si no hay ciudad clara, null (no asumas Málaga).
+        3. CIUDAD/BARRIO: INFIERE la ciudad de cualquier mención de zona, urbanización, barrio o punto de referencia. 
+           Ejemplos: "Marina Banús" → Marbella, "Puerto Banús" → Marbella, "Los Pacos" → Fuengirola, 
+           "Soto de Marbella" → Marbella, "Mijas Golf" → Mijas, "La Cala" → Mijas, "Benalmádena Pueblo" → Benalmádena.
+           Si mencionan "Costa del Sol" sin más contexto, usa "Málaga" como ciudad.
         4. DESCRIPTION: Texto completo del anuncio con m², planta, extras, contacto. Copia el post literalmente.
         5. size_m2, rooms, bathrooms: extrae solo si aparecen explícitamente (null si no).
         6. has_parking, garage_spots, has_terrace, has_pool, has_garden, has_trastero: extrae si se mencionan.
@@ -218,9 +264,10 @@ Devuelve SOLO JSON:
                     first_line = (raw_content.split("\n")[0] if prequalified else "").strip()
                     data["title"] = (first_line[:120] if len(first_line) > 15 else None) or "Anuncio inmobiliario"
                 if prequalified and not data.get("city"):
-                    data["city"] = None
+                    data["city"] = self._infer_city_from_text(raw_content)
                 elif not data.get("city") and not is_portal:
-                    data["city"] = "Málaga"
+                    inferred = self._infer_city_from_text(raw_content)
+                    data["city"] = inferred or "Málaga"
                 data["price"] = self._clean_price(data.get("price"))
                 if not isinstance(data.get("images"), list):
                     data["images"] = []
@@ -250,6 +297,17 @@ Devuelve SOLO JSON:
         except Exception as e:
             logger.error(f"❌ Error parseando respuesta AI: {e}")
             return [] if is_bulk else None
+
+    @staticmethod
+    def _infer_city_from_text(text: str) -> Optional[str]:
+        """Infiera la ciudad del texto usando el mapeo de ubicaciones conocidas."""
+        lower = (text or "").lower()
+        for location, city in COSTA_DEL_SOL_LOCATIONS.items():
+            if location in lower:
+                return city
+        if "costa del sol" in lower:
+            return "Málaga"
+        return None
 
     def _clean_price(self, price_val):
         try:
