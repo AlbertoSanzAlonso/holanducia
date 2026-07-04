@@ -54,6 +54,22 @@ async def scheduler_loop(client: httpx.AsyncClient, api_url: str) -> None:
                     await asyncio.sleep(3600)
                     continue
 
+                cancelled_today = await client.get(
+                    f"{api_url}/api/scraping-requests?status=cancelled&limit=5"
+                )
+                if cancelled_today.status_code == 200:
+                    cancelled_list = cancelled_today.json()
+                    today_str = now.strftime("%Y-%m-%d")
+                    if any(
+                        str(r.get("requested_at", "")).startswith(today_str)
+                        for r in (cancelled_list or [])
+                    ):
+                        logger.info("Sync diario ya cancelado hoy — esperando al día siguiente")
+                        if redis_client:
+                            redis_client.set(today_key, "1", ex=3600)
+                        await asyncio.sleep(3600)
+                        continue
+
                 settings_resp = await client.get(f"{api_url}/api/settings")
                 settings = settings_resp.json() if settings_resp.status_code == 200 else {}
                 target = (
