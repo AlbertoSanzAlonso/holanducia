@@ -87,31 +87,47 @@ EXTRACT_POSTS_JS = """() => {
         }
     }
 
-    function postUrlFrom(el) {
-        const timeLink = el.querySelector(
-            'a[href*="/posts/"], a[href*="permalink"], a[aria-label*="hace"], a[aria-label*="ago"]'
-        );
-        if (timeLink) return absUrl(timeLink.getAttribute('href'));
-        for (const a of el.querySelectorAll('a[href*="/groups/"]')) {
-            const h = (a.getAttribute('href') || '').toLowerCase();
-            if (h.includes('/posts/') || h.includes('permalink') || h.includes('multi_permalinks')) {
-                const url = absUrl(a.getAttribute('href'));
-                if (url) return url;
-            }
-        }
-        for (const a of el.querySelectorAll('a[href]')) {
-            const h = (a.getAttribute('href') || '').toLowerCase();
-            if (h.includes('/posts/') || h.includes('/permalink/') || h.includes('story_fbid') || h.includes('multi_permalinks')) {
-                const url = absUrl(a.getAttribute('href'));
-                if (url) return url;
-            }
-        }
-        return '';
+    function isPostUrl(href) {
+        const h = (href || '').toLowerCase();
+        return h.includes('/posts/') || h.includes('/permalink/') || 
+               h.includes('story_fbid') || h.includes('multi_permalinks') ||
+               h.includes('/photos/') || h.includes('/videos/');
     }
 
-    function imagesFrom(el) {
+    // Primero, encontrar todos los enlaces de posts en la página
+    const postLinks = [];
+    document.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href');
+        if (isPostUrl(href)) {
+            const url = absUrl(href);
+            if (url && !postLinks.includes(url)) {
+                postLinks.push(url);
+            }
+        }
+    });
+
+    // Para cada enlace de post, extraer el texto del post
+    postLinks.forEach(postUrl => {
+        // Buscar el elemento que contiene este enlace
+        const linkEl = document.querySelector(`a[href*="${postUrl.split('/').pop()}"]`);
+        if (!linkEl) return;
+
+        // Subir hasta encontrar el contenedor del post completo
+        let postContainer = linkEl;
+        for (let i = 0; i < 10; i++) {
+            if (!postContainer.parentElement) break;
+            postContainer = postContainer.parentElement;
+            const text = (postContainer.innerText || '').trim();
+            // Si el texto es suficientemente largo, es probablemente el post completo
+            if (text.length >= 100) break;
+        }
+
+        const text = (postContainer.innerText || '').trim();
+        if (text.length < 40) return;
+
+        // Extraer imágenes del contenedor
         const imgs = [];
-        el.querySelectorAll('img').forEach(img => {
+        postContainer.querySelectorAll('img').forEach(img => {
             const w = img.naturalWidth || img.width || 0;
             const h = img.naturalHeight || img.height || 0;
             if (w > 0 && w < 100 && h > 0 && h < 100) return;
@@ -126,42 +142,59 @@ EXTRACT_POSTS_JS = """() => {
             const lower = src.toLowerCase();
             if (!lower.includes('scontent') && !lower.includes('fbcdn')) return;
             if (lower.includes('emoji') || lower.includes('static.xx') || lower.includes('rsrc.php')) return;
-            if (lower.includes('profile') || lower.includes('safe_image')) return;
+            if (lower.includes('profile') || lower.includes('safe_image') || lower.includes('avatar')) return;
             imgs.push(src.split('&')[0]);
         });
-        el.querySelectorAll('[style*="background-image"]').forEach(el => {
-            const m = (el.getAttribute('style') || '').match(/url\\(["']?(https:[^"')]+)/i);
-        if (m && m[1].includes('scontent')) {
-                imgs.push(m[1].split('&')[0]);
-            }
-        });
-        return [...new Set(imgs)];
-    }
 
-    const articles = document.querySelectorAll('div[role="article"], article');
-    articles.forEach(el => {
-        const text = (el.innerText || '').trim();
-        if (text.length < 40) return;
-        const url = postUrlFrom(el);
-        const images = imagesFrom(el);
-        const key = url || text.slice(0, 150);
+        const key = postUrl;
         if (seen.has(key)) return;
         seen.add(key);
-        posts.push({ text, url, images });
+        posts.push({ text, url: postUrl, images: [...new Set(imgs)] });
     });
 
+    // Fallback: si no se encontraron posts con URLs, extraer de artículos
     if (posts.length === 0) {
-        const feed = document.querySelector('[role="main"], [role="feed"], #scrollview');
-        if (feed) {
-            feed.querySelectorAll('div[dir="auto"]').forEach(el => {
-                const text = (el.innerText || '').trim();
-                if (text.length < 80) return;
-                const key = text.slice(0, 150);
-                if (seen.has(key)) return;
-                seen.add(key);
-                posts.push({ text, url: '', images: imagesFrom(el) });
+        const articles = document.querySelectorAll('div[role="article"], article');
+        articles.forEach(el => {
+            const text = (el.innerText || '').trim();
+            if (text.length < 40) return;
+            
+            // Buscar URL en el artículo
+            let url = '';
+            for (const a of el.querySelectorAll('a[href]')) {
+                const href = a.getAttribute('href');
+                if (isPostUrl(href)) {
+                    url = absUrl(href);
+                    if (url) break;
+                }
+            }
+
+            // Extraer imágenes
+            const imgs = [];
+            el.querySelectorAll('img').forEach(img => {
+                const w = img.naturalWidth || img.width || 0;
+                const h = img.naturalHeight || img.height || 0;
+                if (w > 0 && w < 100 && h > 0 && h < 100) return;
+                let src = '';
+                if (img.srcset) {
+                    const parts = img.srcset.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+                    src = parts[parts.length - 1] || img.src || '';
+                } else {
+                    src = img.src || img.getAttribute('data-src') || '';
+                }
+                if (!src) return;
+                const lower = src.toLowerCase();
+                if (!lower.includes('scontent') && !lower.includes('fbcdn')) return;
+                if (lower.includes('emoji') || lower.includes('static.xx') || lower.includes('rsrc.php')) return;
+                if (lower.includes('profile') || lower.includes('safe_image') || lower.includes('avatar')) return;
+                imgs.push(src.split('&')[0]);
             });
-        }
+
+            const key = url || text.slice(0, 150);
+            if (seen.has(key)) return;
+            seen.add(key);
+            posts.push({ text, url, images: [...new Set(imgs)] });
+        });
     }
 
     return posts;
@@ -708,48 +741,19 @@ class FacebookScraper(BaseScraper):
         return posts, page_text, last_scroll, dom_urls, dom_images
 
     async def _host_images_for_posts(self, page, posts: list) -> list:
+        """Para imágenes de Facebook, guarda las URLs directas del CDN."""
         for post in posts:
             images = post.get("images") or []
-            if not images:
-                continue
-            key = (post.get("url") or post.get("text", ""))[:120]
-            hosted = await host_facebook_images(images, key, page=page)
-            if hosted:
-                from scrapers.property_image_storage import is_hosted_url
-                if not is_hosted_url(hosted[0]):
-                    cookies = await page.context.cookies()
-                    cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
-                    from scrapers.property_image_storage import MAX_PROPERTY_IMAGES, FB_HEADERS, _download_http
-                    fb_headers = {**FB_HEADERS, "Cookie": cookie_str}
-                    downloaded = await _download_http(images[:MAX_PROPERTY_IMAGES], key, 0, fb_headers)
-                    if downloaded:
-                        hosted = downloaded
-                post["images"] = hosted
+            if images:
+                post["images"] = images[:30]
         return posts
 
     async def _host_dom_images(self, page, image_urls: list, group_url: str) -> list:
+        """Para imágenes de Facebook, guarda las URLs directas del CDN (expirarán eventualmente)."""
         if not image_urls:
             return []
-        key = group_url.rstrip("/").split("/")[-1][:40] or "fb_group"
-        from scrapers.property_image_storage import is_hosted_url
-        result = await host_facebook_images(image_urls, key, page=page)
-        if result and is_hosted_url(result[0]):
-            return result
-        logger.warning(
-            "host_facebook_images devolvió %s URLs no alojadas — reintentando con cookies...",
-            len(result or image_urls),
-        )
-        try:
-            cookies = await page.context.cookies()
-            cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
-            from scrapers.property_image_storage import MAX_PROPERTY_IMAGES, FB_HEADERS, _download_http
-            fb_headers = {**FB_HEADERS, "Cookie": cookie_str}
-            downloaded = await _download_http(image_urls[:MAX_PROPERTY_IMAGES], key, 0, fb_headers)
-            if downloaded:
-                return downloaded
-        except Exception as e:
-            logger.warning("Fallback cookies falló: %s", e)
-        return result or image_urls
+        logger.info("Imágenes FB: guardando %s URLs directas del CDN (expirarán eventualmente)", len(image_urls))
+        return image_urls[:30]
 
     async def _save_debug_artifacts(self, page, group_id):
         DEBUG_DIR.mkdir(parents=True, exist_ok=True)
