@@ -16,6 +16,8 @@ from backend.app.schemas import (
     BatchDeleteRequest,
     CategoryOut,
     EmbedBackfillResponse,
+    FindByFieldsMatch,
+    FindByFieldsRequest,
     ListPropertiesRequest,
     PropertyCreate,
     PropertyListCreate,
@@ -212,6 +214,35 @@ async def find_similar_properties(payload: SimilarPropertyRequest, db: AsyncSess
         limit=payload.limit,
         min_similarity=payload.min_similarity,
     )
+
+
+@router.post("/properties/find-by-fields", response_model=List[FindByFieldsMatch])
+async def find_properties_by_fields(payload: FindByFieldsRequest, db: AsyncSession = Depends(get_db)):
+    min_price = payload.price * (1 - payload.price_tolerance)
+    max_price = payload.price * (1 + payload.price_tolerance)
+    stmt = select(Property).where(
+        Property.is_active == True,
+        Property.price >= min_price,
+        Property.price <= max_price,
+    )
+    if payload.city:
+        stmt = stmt.where(Property.city.ilike(payload.city))
+    if payload.rooms is not None:
+        stmt = stmt.where(Property.rooms == payload.rooms)
+    stmt = stmt.order_by(Property.created_at.desc()).limit(payload.limit)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        FindByFieldsMatch(
+            id=p.id,
+            url=p.url,
+            title=p.title,
+            price=p.price,
+            city=p.city,
+            rooms=p.rooms,
+        )
+        for p in rows
+    ]
 
 
 @router.post("/properties/{property_id}/embed", response_model=PropertyOut)

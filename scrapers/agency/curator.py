@@ -5,7 +5,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 from scrapers.agency.types import CurateAction, CurateResult, RawLead
 from scrapers.db_connector import DatabaseConnector
-from scrapers.fb_utils import is_property_listing_text
+from scrapers.fb_utils import extract_price_from_text, is_property_listing_text
 from scrapers.portal_detail_parser import is_card_snippet
 from scrapers.portal_utils import is_listing_detail_url
 from scrapers.sync_context import is_sync_mode
@@ -87,6 +87,31 @@ class CuratorAgent:
                         "metadata": metadata or {},
                     },
                     "reason": "redis_raw_hash",
+                }
+
+        price = extract_price_from_text(raw_text)
+        if price and price > 100:
+            match = await self.connector.find_property_by_fields(
+                price,
+                exclude_url=post_url,
+            )
+            if match:
+                logger.info(
+                    "Curator [fields]: duplicado por precio %.0f€ — %s",
+                    price,
+                    match.get("title", "")[:50],
+                )
+                return {
+                    "action": CurateAction.DUPLICATE.value,
+                    "raw_lead": {
+                        "source": source,
+                        "raw_text": raw_text,
+                        "dedup_key": dedup_key,
+                        "base_url": base_url,
+                        "url": post_url,
+                        "metadata": metadata or {},
+                    },
+                    "reason": f"fields_price_{price:.0f}",
                 }
 
         return {

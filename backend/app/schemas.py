@@ -256,3 +256,20 @@ class PropertyListUpdate(BaseModel):
 
 class ListPropertiesRequest(BaseModel):
     property_ids: List[int] = Field(default_factory=list)
+
+
+class FindByFieldsRequest(BaseModel):
+    price: float
+    price_tolerance: float = 0.05
+    city: Optional[str] = None
+    rooms: Optional[int] = None
+    limit: int = 3
+
+
+class FindByFieldsMatch(BaseModel):
+    id: int
+    url: str
+    title: Optional[str] = None
+    price: float = 0
+    city: Optional[str] = None
+    rooms: Optional[int] = None

@@ -124,6 +124,39 @@ class DatabaseConnector:
                 logger.debug("Similarity search unavailable: %s", e)
         return None
 
+    async def find_property_by_fields(
+        self,
+        price: float,
+        *,
+        city: Optional[str] = None,
+        rooms: Optional[int] = None,
+        price_tolerance: float = 0.05,
+        exclude_url: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if price <= 0:
+            return None
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.api_url}/api/properties/find-by-fields",
+                    json={
+                        "price": price,
+                        "price_tolerance": price_tolerance,
+                        "city": city,
+                        "rooms": rooms,
+                        "limit": 3,
+                    },
+                )
+                if response.status_code != 200:
+                    return None
+                for match in response.json():
+                    if exclude_url and match.get("url") == exclude_url:
+                        continue
+                    return match
+            except Exception as e:
+                logger.debug("Find by fields unavailable: %s", e)
+        return None
+
     @staticmethod
     def _lead_to_search_text(lead: Dict[str, Any]) -> str:
         parts = [
