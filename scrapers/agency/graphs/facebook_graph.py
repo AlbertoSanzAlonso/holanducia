@@ -132,10 +132,12 @@ def build_facebook_graph(
         rejected_samples = []
         for p in posts:
             text = _post_text(p)
-            if is_property_listing_text(text):
+            images = p.get("images") or []
+            has_images = len(images) > 0
+            if is_property_listing_text(text, has_images=has_images):
                 candidates.append(p)
             elif len(rejected_samples) < 5:
-                rejected_samples.append(text[:200].replace("\n", " "))
+                rejected_samples.append(f"[imgs={len(images)}] {text[:200].replace(chr(10), ' ')}")
 
         logger.info(
             "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",

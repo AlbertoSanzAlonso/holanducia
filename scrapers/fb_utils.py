@@ -15,6 +15,10 @@ PROPERTY_TYPES = (
     "property", "bedroom", "bedrooms", "bed", "beds", "bath", "baths",
     "town house", "semi-detached", "detached", "terraced",
     "plot", "land", "garage", "parking", "storage room",
+    # Additional indicators
+    "terraza", "terrace", "balcón", "balcony", "ascensor", "elevator",
+    "vistas al mar", "sea view", "primera línea", "beachfront",
+    "inmobiliaria", "real estate", "agente", "agent",
 )
 
 LISTING_INTENTS = (
@@ -30,6 +34,9 @@ LISTING_INTENTS = (
     # Surface area — strong indicator even when Facebook truncates the price
     "m²", "m2", "metros cuadrados", "metros", "construidos", "construida",
     "built", "sqm", "sq m",
+    # Additional indicators
+    "concertar visita", "schedule viewing", "más información", "more info",
+    "whatsapp", "llámanos", "call us", "contactar", "contact",
 )
 
 NON_LISTING_HINTS = (
@@ -42,8 +49,8 @@ NON_LISTING_HINTS = (
 )
 
 
-def is_property_listing_text(text: str) -> bool:
-    """Filtro relajado: tipo de inmueble O intención de anuncio."""
+def is_property_listing_text(text: str, has_images: bool = False) -> bool:
+    """Filtro que considera imágenes para ser más permisivo con anuncios truncados."""
     lower = (text or "").lower()
     if len(lower) < 50:
         return False
@@ -61,9 +68,14 @@ def is_property_listing_text(text: str) -> bool:
     has_intent = any(i in lower for i in LISTING_INTENTS)
     has_price = bool(extract_price_from_text(text))
 
-    if not has_type and not has_intent and not has_price:
-        return False
-    return True
+    if has_images:
+        if has_type or has_intent or has_price:
+            return True
+    else:
+        if has_type and (has_intent or has_price):
+            return True
+
+    return False
 
 
 def looks_like_real_estate(text: str) -> bool:

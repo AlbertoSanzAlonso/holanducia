@@ -60,9 +60,12 @@ def build_property_pipeline(
             if len(leads) >= limit:
                 break
             raw_text = item["raw_text"]
+            metadata = item.get("metadata") or {}
+            images = metadata.get("images") or []
+            has_images = len(images) > 0
 
             if source == "Facebook":
-                if not is_property_listing_text(raw_text):
+                if not is_property_listing_text(raw_text, has_images=has_images):
                     rejected_classifier += 1
                     continue
                 classification = await fb_classifier.classify(raw_text)
