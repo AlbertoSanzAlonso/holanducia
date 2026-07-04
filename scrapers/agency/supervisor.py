@@ -92,12 +92,12 @@ class SupervisorAgent:
             score += 1
         if images:
             score += 2
-        if is_valid_listing_url(url):
+        if url and (is_valid_listing_url(url) or is_facebook_post_url(url)):
             score += 2
         if len(description) >= 80:
             score += 1
 
-        min_score = 5 if source == "Facebook" else 2
+        min_score = 4 if source == "Facebook" else 2
         if score < min_score:
             return {"approved": False, "reason": f"score_bajo_{score}", "quality_score": score}
 
