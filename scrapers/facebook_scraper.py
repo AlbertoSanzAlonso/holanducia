@@ -87,17 +87,10 @@ EXTRACT_POSTS_JS = """() => {
     }
 
     function postUrlFrom(el) {
-        const hrefPatterns = [
-            '/posts/', '/permalink/', 'story_fbid', 'multi_permalinks',
-            '/photo/', '/videos/', 'fbid=', 'comment_id='
-        ];
-        for (const a of el.querySelectorAll('a[href]')) {
-            const h = (a.getAttribute('href') || '').toLowerCase();
-            if (hrefPatterns.some(p => h.includes(p))) {
-                const url = absUrl(a.getAttribute('href'));
-                if (url) return url;
-            }
-        }
+        const timeLink = el.querySelector(
+            'a[href*="/posts/"], a[href*="permalink"], a[aria-label*="hace"], a[aria-label*="ago"]'
+        );
+        if (timeLink) return absUrl(timeLink.getAttribute('href'));
         for (const a of el.querySelectorAll('a[href*="/groups/"]')) {
             const h = (a.getAttribute('href') || '').toLowerCase();
             if (h.includes('/posts/') || h.includes('permalink') || h.includes('multi_permalinks')) {
@@ -105,10 +98,13 @@ EXTRACT_POSTS_JS = """() => {
                 if (url) return url;
             }
         }
-        const timeLink = el.querySelector(
-            'a[href*="/posts/"], a[href*="permalink"], a[aria-label*="hace"], a[aria-label*="ago"]'
-        );
-        if (timeLink) return absUrl(timeLink.getAttribute('href'));
+        for (const a of el.querySelectorAll('a[href]')) {
+            const h = (a.getAttribute('href') || '').toLowerCase();
+            if (h.includes('/posts/') || h.includes('/permalink/') || h.includes('story_fbid') || h.includes('multi_permalinks')) {
+                const url = absUrl(a.getAttribute('href'));
+                if (url) return url;
+            }
+        }
         return '';
     }
 

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 DedupCheckFn = Callable[[str], Coroutine[Any, Any, bool]]
 
-DUPLICATE_THRESHOLD = float(os.getenv("VECTOR_DUPLICATE_THRESHOLD", "0.92"))
+DUPLICATE_THRESHOLD = float(os.getenv("VECTOR_DUPLICATE_THRESHOLD", "0.85"))
 
 
 def make_dedup_key(text: str, prefix: str = "raw") -> str:

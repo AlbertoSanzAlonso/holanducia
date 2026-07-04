@@ -67,17 +67,12 @@ def build_facebook_graph(
 
     async def use_dom_posts(state: FacebookPipelineState) -> FacebookPipelineState:
         posts: List[FacebookPost] = []
-        dom_urls = state.get("dom_urls") or []
         dom_images = state.get("dom_images") or []
         img_count = len(dom_images)
-        url_count = len(dom_urls)
         for i, raw in enumerate(state.get("dom_posts", [])):
             normalized = _normalize_post(raw)
             if not normalized:
                 continue
-            if not normalized.get("url") and url_count > 0:
-                idx = min(i, url_count - 1)
-                normalized["url"] = dom_urls[idx]
             if not normalized.get("images") and img_count > 0:
                 imgs_per = max(1, img_count // max(len(state.get("dom_posts", [])), 1))
                 start = i * imgs_per
@@ -110,15 +105,12 @@ def build_facebook_graph(
     async def ai_extract(state: FacebookPipelineState) -> FacebookPipelineState:
         raw_posts = await scout.extract_posts_from_text(state.get("page_text", ""), "Facebook")
         posts = []
-        dom_urls = state.get("dom_urls") or []
         dom_images = state.get("dom_images") or []
         imgs_per_post = max(1, len(dom_images) // max(len(raw_posts), 1)) if dom_images else 0
         for i, raw in enumerate(raw_posts):
             normalized = _normalize_post(raw)
             if not normalized:
                 continue
-            if not normalized.get("url") and i < len(dom_urls):
-                normalized["url"] = dom_urls[i]
             if not normalized.get("images") and imgs_per_post > 0:
                 start = i * imgs_per_post
                 end = start + imgs_per_post

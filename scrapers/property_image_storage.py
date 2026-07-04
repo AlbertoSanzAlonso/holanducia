@@ -1,5 +1,6 @@
 """Descarga y aloja imágenes de anuncios (Facebook, portales) en el VPS."""
 import hashlib
+import json
 import logging
 import os
 import re
@@ -82,6 +83,26 @@ def _save_bytes(content: bytes, lead_key: str, idx: int, content_type: str, url:
     return f"/api/media/properties/{filename}"
 
 
+async def _download_via_fetch(page: Any, url: str) -> Optional[bytes]:
+    """Descarga imagen usando fetch() de JS en el contexto de la página (usa cookies/sesión real de FB)."""
+    safe_url = json.dumps(url)
+    try:
+        result = await page.evaluate(f"""async () => {{
+            try {{
+                const resp = await fetch({safe_url}, {{credentials: 'include'}});
+                if (!resp.ok) return null;
+                const blob = await resp.blob();
+                const buf = await blob.arrayBuffer();
+                return Array.from(new Uint8Array(buf));
+            }} catch(e) {{ return null; }}
+        }}""")
+        if result and isinstance(result, list) and len(result) > 100:
+            return bytes(result)
+    except Exception as e:
+        logger.warning("Imagen (fetch) falló %s: %s", url[:60], e)
+    return None
+
+
 async def _download_with_page(
     page: Any,
     image_urls: List[str],
@@ -92,16 +113,26 @@ async def _download_with_page(
     for offset, url in enumerate(image_urls):
         if not url:
             continue
+        body: Optional[bytes] = None
+        ct: str = ""
         try:
             response = await page.request.get(url)
-            if response.status != 200:
-                continue
-            body = await response.body()
-            saved = _save_bytes(body, lead_key, start_idx + offset, response.headers.get("content-type", ""), url)
-            if saved:
-                hosted.append(saved)
+            if response.status == 200:
+                body = await response.body()
+                ct = response.headers.get("content-type", "")
         except Exception as e:
-            logger.warning("Imagen (page) falló %s: %s", url[:60], e)
+            logger.debug("Imagen (page.request) falló %s: %s", url[:60], e)
+
+        if not body or len(body) < 100:
+            body = await _download_via_fetch(page, url)
+            ct = ""
+
+        if not body:
+            logger.debug("Imagen no descargable: %s", url[:80])
+            continue
+        saved = _save_bytes(body, lead_key, start_idx + offset, ct, url)
+        if saved:
+            hosted.append(saved)
     return hosted
 
 
