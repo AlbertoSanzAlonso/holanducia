@@ -1,5 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 import httpx
 import logging
@@ -106,11 +107,13 @@ class BaseScraper(ABC):
 
     async def is_already_scraped(self, url: str) -> bool:
         """
-        True = omitir fetch de esta ficha.
+        True = omitir fetch de esta ficha (ya está en BD con datos completos).
 
-        Orden: ¿existe en BD? → si es nueva, scrapear (Crawl4AI/Playwright, sin Firecrawl en ficha).
-        Si existe y PORTAL_UPDATE_EXISTING=true, re-scrapear y comparar content_hash al guardar.
-        Firecrawl solo entra vía portal_fetcher cuando hay WAF (y solo en índices por defecto).
+        Solo re-scrapea si:
+        - sync_mode (masivo diario): fuerza re-verificación sin Firecrawl
+        - PORTAL_UPDATE_EXISTING=true: re-verifica si ha pasado FORCE_RESCAN_DAYS
+        - Ficha incompleta (_needs_portal_rescrape): fuerza re-scrapeo
+        - No está en BD ni Redis: scrapea normalmente
         """
         if is_sync_mode():
             return False
@@ -123,11 +126,24 @@ class BaseScraper(ABC):
         in_db = is_listing_detail_url(url) and await self.is_in_db(url)
 
         if in_db:
-            if os.getenv("PORTAL_UPDATE_EXISTING", "true").lower() == "true":
-                logger.debug("♻️ En BD — re-verificar cambios (sin Firecrawl en ficha): %s", url[:70])
+            update_existing = os.getenv("PORTAL_UPDATE_EXISTING", "false").lower() == "true"
+            if update_existing:
+                force_days = int(os.getenv("FORCE_RESCAN_DAYS", "7"))
+                prop = await self.connector.get_property_by_url(url)
+                last_seen = prop.get("last_seen_at") if prop else None
+                if last_seen:
+                    try:
+                        last = datetime.fromisoformat(str(last_seen).replace("Z", "+00:00"))
+                        if datetime.now(timezone.utc) - last < timedelta(days=force_days):
+                            logger.debug("♻️ En BD (<%sd) — omitiendo: %s", force_days, url[:70])
+                            await self.mark_as_scraped(url)
+                            return True
+                    except Exception:
+                        pass
+                logger.info("♻️ En BD (>%sd) — re-verificando: %s", force_days, url[:70])
                 return False
             await self.mark_as_scraped(url)
-            logger.info("⏭️ En BD, PORTAL_UPDATE_EXISTING=false — omitiendo: %s", url[:70])
+            logger.info("⏭️ En BD — omitiendo: %s", url[:70])
             return True
 
         if not self.redis:
