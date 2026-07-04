@@ -7,11 +7,13 @@ import {
 } from 'lucide-react';
 import { formatPrice, getListingUrl, resolveImageUrl, hasPropertyImage } from './utils/propertyDisplay';
 import PropertyGallery from './PropertyGallery';
+import ConfirmDialog from './ConfirmDialog';
 
 const PropertyIntelligenceModal = ({ property: initialProperty, categories, lists = [], onClose, onUpdate, onDelete, onAddToList, onRemoveFromList }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [property, setProperty] = useState(initialProperty);
   const [saving, setSaving] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   if (!property) return null;
 
@@ -27,12 +29,7 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, list
     setSaving(false);
   };
 
-  const handleDelete = async () => {
-    if (window.confirm('¿Estás seguro de que quieres eliminar esta propiedad de la base de datos?')) {
-      await onDelete(property.id);
-      onClose();
-    }
-  };
+  const handleDelete = () => setShowConfirm(true);
 
   return (
     <motion.div 
@@ -346,6 +343,17 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, list
           </div>
         </div>
       </motion.div>
+      {showConfirm && (
+        <ConfirmDialog
+          message="¿Estás seguro de que quieres eliminar esta propiedad de la base de datos?"
+          onConfirm={async () => {
+            setShowConfirm(false);
+            await onDelete(property.id);
+            onClose();
+          }}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
     </motion.div>
   );
 };

@@ -13,6 +13,7 @@ import SettingsView from './SettingsView'
 import StatisticsView from './StatisticsView'
 import PropertyFilters from './PropertyFilters'
 import ListEditModal from './ListEditModal'
+import ConfirmDialog from './ConfirmDialog'
 import PropertyGallery, { getPropertyImageUrls } from './PropertyGallery'
 import { formatPrice, getListingUrl, hasPropertyImage } from './utils/propertyDisplay'
 import {
@@ -41,6 +42,7 @@ function App() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [errorField, setErrorField] = useState(null)
   const [securityBlock, setSecurityBlock] = useState(null)
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false)
   const [scrapingNotice, setScrapingNotice] = useState(null)
   const prevScrapingStatusRef = useRef(null)
 
@@ -76,12 +78,7 @@ function App() {
     fetchData()
   }
 
-  const deleteBatch = async () => {
-    if (!window.confirm(`¿Seguro que quieres eliminar ${selectedIds.size} elementos?`)) return
-    await api.deleteProperties(Array.from(selectedIds))
-    setSelectedIds(new Set())
-    fetchData()
-  }
+  const deleteBatch = () => setShowBatchConfirm(true)
 
   const changeBatchCategory = async (catId) => {
     await api.updatePropertiesCategory(Array.from(selectedIds), catId)
@@ -563,6 +560,19 @@ function App() {
                 </motion.div>
             )}
         </AnimatePresence>
+
+        {showBatchConfirm && (
+          <ConfirmDialog
+            message={`¿Seguro que quieres eliminar ${selectedIds.size} elementos?`}
+            onConfirm={async () => {
+              setShowBatchConfirm(false)
+              await api.deleteProperties(Array.from(selectedIds))
+              setSelectedIds(new Set())
+              fetchData()
+            }}
+            onCancel={() => setShowBatchConfirm(false)}
+          />
+        )}
 
         <AnimatePresence>
           {selectedProperty && (

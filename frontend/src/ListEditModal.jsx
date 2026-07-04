@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Save, Trash2, X } from 'lucide-react'
 import { LIST_COLORS } from './utils/listColors'
+import ConfirmDialog from './ConfirmDialog'
 
 export default function ListEditModal({ list, onClose, onSave, onDelete }) {
   const isEdit = Boolean(list?.id)
@@ -9,6 +10,7 @@ export default function ListEditModal({ list, onClose, onSave, onDelete }) {
   const [description, setDescription] = useState(list?.description || '')
   const [color, setColor] = useState(list?.color || LIST_COLORS[0])
   const [saving, setSaving] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -22,15 +24,8 @@ export default function ListEditModal({ list, onClose, onSave, onDelete }) {
     }
   }
 
-  const handleDelete = async () => {
-    if (!isEdit || !window.confirm(`¿Eliminar la lista "${list.name}"? Las propiedades no se borran.`)) return
-    setSaving(true)
-    try {
-      await onDelete(list.id)
-      onClose()
-    } finally {
-      setSaving(false)
-    }
+  const handleDelete = () => {
+    if (isEdit) setShowConfirm(true)
   }
 
   return (
@@ -115,6 +110,23 @@ export default function ListEditModal({ list, onClose, onSave, onDelete }) {
           </button>
         </div>
       </motion.form>
+      {showConfirm && (
+        <ConfirmDialog
+          message={`¿Eliminar la lista "${list.name}"? Las propiedades no se borran.`}
+          onConfirm={async () => {
+            setShowConfirm(false)
+            setSaving(true)
+            try {
+              await onDelete(list.id)
+              onClose()
+            } finally {
+              setSaving(false)
+            }
+          }}
+          onCancel={() => setShowConfirm(false)}
+          confirmText="Eliminar lista"
+        />
+      )}
     </motion.div>
   )
 }
