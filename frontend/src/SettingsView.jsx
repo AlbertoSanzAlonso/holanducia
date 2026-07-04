@@ -91,6 +91,7 @@ export default function SettingsView() {
   const [notification, setNotification] = useState(null)
   const [jobs, setJobs] = useState([])
   const [jobsLoading, setJobsLoading] = useState(false)
+  const [selectedJob, setSelectedJob] = useState(null)
 
   const buildPortalUrls = (cfg) => {
     const cities = cfg.cities?.length ? cfg.cities : ['malaga']
@@ -464,12 +465,13 @@ export default function SettingsView() {
               {jobs.map((job) => (
                 <div
                   key={job.id}
-                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                  onClick={() => setSelectedJob(job)}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer hover:shadow-md ${
                     job.status === 'processing'
-                      ? 'bg-blue-50/50 border-blue-200'
+                      ? 'bg-blue-50/50 border-blue-200 hover:border-blue-300'
                       : job.status === 'completed'
-                      ? 'bg-white border-slate-100'
-                      : 'bg-white border-slate-100'
+                      ? 'bg-white border-slate-100 hover:border-slate-300'
+                      : 'bg-white border-slate-100 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -503,6 +505,123 @@ export default function SettingsView() {
             </div>
           )}
         </div>
+
+        {/* MODAL DETALLE MISIÓN */}
+        <AnimatePresence>
+          {selectedJob && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={() => setSelectedJob(null)}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl max-h-[85vh] overflow-y-auto"
+              >
+                <div className="flex justify-between items-start mb-8">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      {statusIcon(selectedJob.status)}
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        {statusLabel(selectedJob.status)}
+                      </span>
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-900">Misión #{selectedJob.id}</h2>
+                    <p className="text-sm text-slate-500 font-medium mt-1">{selectedJob.source_name || 'Scraping'}</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedJob(null)}
+                    className="bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-all"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 rounded-2xl">
+                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1">Cuota</p>
+                      <p className="text-xl font-black text-slate-900">{selectedJob.target_leads || '—'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-2xl">
+                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1">Solicitada</p>
+                      <p className="text-sm font-bold text-slate-700">
+                        {new Date(selectedJob.requested_at).toLocaleString('es-ES')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedJob.processed_at && (
+                    <div className="p-4 bg-slate-50 rounded-2xl">
+                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1">
+                        {selectedJob.status === 'completed' ? 'Completada' : 'Procesada'}
+                      </p>
+                      <p className="text-sm font-bold text-slate-700">
+                        {new Date(selectedJob.processed_at).toLocaleString('es-ES')}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedJob.portal_urls?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2">
+                        Portales ({selectedJob.portal_urls.length})
+                      </p>
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                        {selectedJob.portal_urls.map((url, i) => {
+                          const domain = url.replace(/https?:\/\/(www\.)?/, '').split('/')[0]
+                          const label = domain === 'fotocasa.es' ? 'Fotocasa' :
+                                        domain === 'habitaclia.com' ? 'Habitaclia' :
+                                        domain === 'pisos.com' ? 'Pisos.com' :
+                                        domain === 'idealista.com' ? 'Idealista' : domain
+                          return (
+                            <div key={i} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl">
+                              <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-200 px-2 py-0.5 rounded-md">{label}</span>
+                              <span className="text-[10px] text-slate-400 truncate font-medium">{url}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedJob.groups?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2">
+                        Grupos Facebook ({selectedJob.groups.length})
+                      </p>
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                        {selectedJob.groups.map((g, i) => (
+                          <div key={i} className="p-2.5 bg-slate-50 rounded-xl">
+                            <p className="text-[10px] text-slate-500 font-medium truncate">
+                              facebook.com/groups/{g}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedJob.error_message && (
+                    <div className={`p-4 rounded-2xl ${selectedJob.status === 'completed' ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+                      <p className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-1">Resultado</p>
+                      <p className="text-xs font-medium text-slate-700">{selectedJob.error_message}</p>
+                    </div>
+                  )}
+
+                  {(selectedJob.status === 'pending' || selectedJob.status === 'processing') && (
+                    <button
+                      onClick={() => { cancelJob(selectedJob.id); setSelectedJob(null) }}
+                      className="w-full py-4 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2"
+                    >
+                      <Square size={16} />
+                      Cancelar misión
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         <div className="grid grid-cols-2 gap-6">
           <div>
