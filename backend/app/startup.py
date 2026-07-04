@@ -57,7 +57,46 @@ async def _ensure_property_lists() -> None:
 
 
 async def _ensure_fb_groups() -> None:
-    await _run_migration(MIGRATION_FB_GROUPS, "fb_groups")
+    if not MIGRATION_FB_GROUPS.exists():
+        return
+
+    async with engine.begin() as conn:
+        result = await conn.execute(text("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'user_settings'
+            AND column_name = 'facebook_groups'
+            AND data_type = 'ARRAY'
+        """))
+        is_old_format = result.fetchone() is not None
+
+        if is_old_format:
+            logger.info("Migrando facebook_groups de TEXT[] a JSONB...")
+            await conn.execute(text("ALTER TABLE user_settings ADD COLUMN facebook_groups_new JSONB"))
+            await conn.execute(text("""
+                UPDATE user_settings AS u
+                SET facebook_groups_new = (
+                    SELECT COALESCE(jsonb_agg(
+                        jsonb_build_object(
+                            'id', elem,
+                            'name', COALESCE(u.facebook_group_names->elem, '')::text,
+                            'enabled', true
+                        )
+                    ), '[]'::jsonb)
+                    FROM unnest(u.facebook_groups) AS elem
+                )
+            """))
+            await conn.execute(text("ALTER TABLE user_settings DROP COLUMN facebook_groups"))
+            await conn.execute(text("ALTER TABLE user_settings DROP COLUMN facebook_group_names"))
+            await conn.execute(text("ALTER TABLE user_settings RENAME COLUMN facebook_groups_new TO facebook_groups"))
+            await conn.execute(text("""
+                ALTER TABLE user_settings ALTER COLUMN facebook_groups
+                SET DEFAULT '[{"id": "41757906864", "name": "", "enabled": true},
+                             {"id": "1018337428507491", "name": "", "enabled": true},
+                             {"id": "397742921612774", "name": "", "enabled": true}]'::jsonb
+            """))
+            logger.info("Migración facebook_groups completada")
+        else:
+            logger.info("Migración facebook_groups no necesaria (ya está en formato JSONB)")
 
 
 async def init_db() -> None:
