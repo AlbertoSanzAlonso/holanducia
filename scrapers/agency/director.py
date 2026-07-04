@@ -15,6 +15,39 @@ PORTAL_NAMES = ("Fotocasa", "Habitaclia", "Pisos.com", "Pisos")
 MASS_MISSION_TYPES = frozenset({"mass_scrape", "daily_sync"})
 
 
+def _enabled_portals(settings: Dict[str, Any]) -> List[str]:
+    return [
+        p.strip().lower()
+        for p in (settings.get("portals") or "").split(",")
+        if p.strip()
+    ]
+
+
+def _facebook_enabled(settings: Dict[str, Any]) -> bool:
+    return "facebook" in _enabled_portals(settings)
+
+
+def _resolve_fb_groups(settings: Dict[str, Any], res: Dict[str, Any]) -> List[str]:
+    """Grupos FB solo si Facebook está activo en fuentes o vienen explícitos en la petición."""
+    if res.get("groups") is not None:
+        groups = res["groups"]
+        if isinstance(groups, str):
+            return [g.strip() for g in groups.split(",") if g.strip()] if "," in groups else ([groups.strip()] if groups.strip() else [])
+        if isinstance(groups, list):
+            return [str(g).strip() for g in groups if str(g).strip()]
+        return [str(groups)] if groups else []
+
+    if not _facebook_enabled(settings):
+        return []
+
+    raw = settings.get("facebook_groups") or settings.get("groups")
+    if isinstance(raw, str):
+        return [g.strip() for g in raw.split(",") if g.strip()] if "," in raw else ([raw.strip()] if raw.strip() else [])
+    if isinstance(raw, list):
+        return [str(g).strip() for g in raw if str(g).strip()]
+    return [str(raw)] if raw else []
+
+
 class DirectorAgent:
     def __init__(self, api_url: str = None):
         self.db = DatabaseConnector(api_url=api_url)
@@ -80,20 +113,18 @@ class DirectorAgent:
             )
             fb_scroll = int(os.getenv("FB_SCROLL_STEPS", "55"))
 
-        fb_groups = res.get("groups") or settings.get("facebook_groups") or settings.get("groups")
+        fb_groups = _resolve_fb_groups(settings, res)
         portal_urls = res.get("portal_urls") or build_portal_urls(settings)
 
         if isinstance(portal_urls, str):
             portal_urls = [u.strip() for u in portal_urls.split(",") if u.strip()]
 
         if not fb_groups and not portal_urls:
-            fb_groups = ["41757906864", "1018337428507491", "397742921612774"]
-            logger.info("Usando grupos por defecto del escuadron.")
-
-        if isinstance(fb_groups, str):
-            fb_groups = [g.strip() for g in fb_groups.split(",")] if "," in fb_groups else [fb_groups.strip()]
-        elif not isinstance(fb_groups, list):
-            fb_groups = [str(fb_groups)] if fb_groups else []
+            if _facebook_enabled(settings):
+                fb_groups = ["41757906864", "1018337428507491", "397742921612774"]
+                logger.info("Usando grupos por defecto del escuadron.")
+            else:
+                logger.warning("Misión sin fuentes — activa portales en Configuración.")
 
         discovered = await self._discover_listing_urls(settings)
         index_urls = build_portal_urls(settings)
@@ -135,6 +166,7 @@ class DirectorAgent:
 
         total_captured = 0
         attempts = 0
+        zero_rounds = 0
         max_attempts = 10 if is_mass else 5
 
         try:
@@ -144,12 +176,7 @@ class DirectorAgent:
                     logger.info("Ronda %s — %s/%s procesados", attempts, total_captured, quota)
                     await asyncio.sleep(30 if is_mass else 60)
 
-                if fb_groups:
-                    import random
-
-                    random.shuffle(fb_groups)
-                    scraper = FacebookScraper(fb_groups[0], limit=(quota - total_captured))
-                    total_captured += await scraper.scrape_multiple(fb_groups)
+                round_start = total_captured
 
                 if portal_urls and total_captured < quota:
                     backend = os.getenv("SNIPER_BACKEND", "crawl4ai").lower()
@@ -166,8 +193,27 @@ class DirectorAgent:
 
                     total_captured += await sniper.scrape_portals(portal_urls)
 
+                if fb_groups and total_captured < quota:
+                    import random
+
+                    random.shuffle(fb_groups)
+                    scraper = FacebookScraper(fb_groups[0], limit=(quota - total_captured))
+                    total_captured += await scraper.scrape_multiple(fb_groups)
+
                 if total_captured >= quota:
                     break
+
+                if total_captured == round_start:
+                    zero_rounds += 1
+                    if zero_rounds >= 2:
+                        logger.warning(
+                            "2 rondas consecutivas sin leads nuevos (%s/%s) — abortando misión",
+                            total_captured,
+                            quota,
+                        )
+                        break
+                else:
+                    zero_rounds = 0
         finally:
             if session:
                 # mass_scrape acumula oportunidades; solo daily_sync reconcilia bajas

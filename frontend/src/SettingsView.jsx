@@ -87,17 +87,48 @@ export default function SettingsView() {
 
   const [notification, setNotification] = useState(null)
 
+  const buildPortalUrls = (cfg) => {
+    const cities = cfg.cities?.length ? cfg.cities : ['malaga']
+    const portals = (cfg.portals || '')
+      .split(',')
+      .map((p) => p.trim().toLowerCase())
+      .filter(Boolean)
+    const urls = []
+    for (const city of cities) {
+      const slug = city.toLowerCase().replace(/\s+/g, '-')
+      if (portals.some((p) => p.includes('fotocasa'))) {
+        urls.push(`https://www.fotocasa.es/es/comprar/viviendas/${slug}-provincia/todas-las-zonas/l`)
+      }
+      if (portals.some((p) => p.includes('habitaclia'))) {
+        urls.push(`https://www.habitaclia.com/comprar-vivienda-en-${slug}/listado.htm`)
+      }
+      if (portals.some((p) => p.includes('pisos'))) {
+        urls.push(`https://www.pisos.com/venta/pisos-${slug}/`)
+      }
+    }
+    return [...new Set(urls)]
+  }
+
   const handleManualUpdate = async () => {
     setSaving(true)
     await handleSave()
-    
+
+    const portals = (settings.portals || '')
+      .split(',')
+      .map((p) => p.trim().toLowerCase())
+      .filter(Boolean)
+    const facebookOn = portals.includes('facebook')
+
     await api.createScrapingRequest({
       status: 'pending',
       source_name: 'Manual Trigger',
       target_leads: settings.max_leads_per_portal || 10,
+      portal_urls: buildPortalUrls(settings),
+      groups: facebookOn ? (settings.facebook_groups || []) : [],
     })
 
-    setNotification('Radar rápido activado — cuota ' + (settings.max_leads_per_portal || 10) + ' anuncios.')
+    const sources = portals.filter((p) => p !== 'catastro').join(', ') || 'sin fuentes'
+    setNotification('Radar rápido activado — ' + (settings.max_leads_per_portal || 10) + ' anuncios · ' + sources)
     setTimeout(() => setNotification(null), 5000)
     setSaving(false)
   }

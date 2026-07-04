@@ -117,6 +117,37 @@ EXTRACT_POSTS_JS = """() => {
 
 SCROLL_JS = """(delta) => {
     const step = delta || 900;
+
+    function scrollEl(el, label) {
+        el.scrollTop += step;
+        return { method: label, scroll: el.scrollTop, max: el.scrollHeight };
+    }
+
+    const feedSelectors = [
+        '[role="feed"]',
+        'div[data-pagelet="GroupFeed"]',
+        'div[data-pagelet="StoriesRing"] + div',
+    ];
+    for (const sel of feedSelectors) {
+        const el = document.querySelector(sel);
+        if (el && el.scrollHeight > el.clientHeight + 50) {
+            return scrollEl(el, sel);
+        }
+    }
+
+    const main = document.querySelector('[role="main"]');
+    if (main) {
+        const inner = main.querySelector('[role="feed"]')
+            || [...main.querySelectorAll('div')].find(el => {
+                const s = getComputedStyle(el);
+                return (s.overflowY === 'auto' || s.overflowY === 'scroll')
+                    && el.scrollHeight > el.clientHeight + 100;
+            });
+        if (inner) {
+            return scrollEl(inner, 'main>feed');
+        }
+    }
+
     const scrollables = [...document.querySelectorAll('div, main')].filter(el => {
         const s = getComputedStyle(el);
         return (s.overflowY === 'auto' || s.overflowY === 'scroll')
@@ -126,9 +157,9 @@ SCROLL_JS = """(delta) => {
         (a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight)
     )[0];
     if (target) {
-        target.scrollTop += step;
-        return { method: 'container', scroll: target.scrollTop };
+        return scrollEl(target, 'container');
     }
+
     window.scrollBy(0, step);
     return {
         method: 'window',
@@ -249,6 +280,7 @@ class FacebookScraper(BaseScraper):
                 await page.goto(group_url, wait_until="domcontentloaded", timeout=60000)
                 await page.wait_for_timeout(3000)
                 await self._dismiss_cookies(page)
+                await self._open_discussion_feed(page)
 
                 dom_posts, page_text, scroll_pos = await self._scroll_and_collect(page)
                 dom_posts = await self._host_images_for_posts(page, dom_posts)
@@ -446,10 +478,43 @@ class FacebookScraper(BaseScraper):
             except Exception:
                 continue
 
+    async def _open_discussion_feed(self, page) -> bool:
+        """Activa la pestaña Discusión/Publicaciones (FB a veces abre About por defecto)."""
+        patterns = [
+            r"Discusión",
+            r"Discussion",
+            r"Publicaciones",
+            r"Posts",
+        ]
+        for pattern in patterns:
+            try:
+                tab = page.get_by_role("tab", name=re.compile(pattern, re.IGNORECASE))
+                if await tab.first.is_visible(timeout=2000):
+                    await tab.first.click(timeout=3000)
+                    await page.wait_for_timeout(2500)
+                    logger.info("Pestaña de feed activada: %s", pattern)
+                    return True
+            except Exception:
+                continue
+        for pattern in patterns:
+            try:
+                link = page.get_by_role("link", name=re.compile(pattern, re.IGNORECASE))
+                if await link.first.is_visible(timeout=1500):
+                    await link.first.click(timeout=3000)
+                    await page.wait_for_timeout(2500)
+                    logger.info("Enlace de feed activado: %s", pattern)
+                    return True
+            except Exception:
+                continue
+        return False
+
     async def _scroll_and_collect(self, page):
         posts_by_key: dict[str, dict] = {}
         last_scroll = 0
         stagnant = 0
+        last_post_count = 0
+        stagnant_posts = 0
+        stagnant_post_limit = 8
 
         for step in range(self._scroll_steps()):
             if page.is_closed():
@@ -494,6 +559,13 @@ class FacebookScraper(BaseScraper):
             scroll_info = await page.evaluate(SCROLL_JS, scroll_delta)
             current_scroll = scroll_info.get("scroll", 0)
 
+            post_count = len(posts_by_key)
+            if post_count == last_post_count:
+                stagnant_posts += 1
+            else:
+                stagnant_posts = 0
+            last_post_count = post_count
+
             if step % 5 == 0:
                 with_url = sum(1 for p in posts_by_key.values() if p.get("url"))
                 with_img = sum(1 for p in posts_by_key.values() if p.get("images"))
@@ -501,12 +573,20 @@ class FacebookScraper(BaseScraper):
                     "Scroll paso %s/%s: %s posts (%s con enlace, %s con foto), pos=%spx (%s)",
                     step,
                     self._scroll_steps(),
-                    len(posts_by_key),
+                    post_count,
                     with_url,
                     with_img,
                     current_scroll,
                     scroll_info.get("method", "?"),
                 )
+
+            if stagnant_posts >= stagnant_post_limit and post_count <= 5:
+                logger.warning(
+                    "Feed estancado en %s posts tras %s pasos de scroll — parando temprano",
+                    post_count,
+                    step + 1,
+                )
+                break
 
             if current_scroll == last_scroll:
                 stagnant += 1
@@ -522,7 +602,12 @@ class FacebookScraper(BaseScraper):
             await page.wait_for_timeout(1000 if stagnant else 800)
 
         page_text = await page.evaluate("() => document.body.innerText || ''")
-        return list(posts_by_key.values()), page_text, last_scroll
+        posts = list(posts_by_key.values())
+        if posts and len(posts) <= 5:
+            for i, p in enumerate(posts[:3]):
+                preview = (p.get("text") or "")[:120].replace("\n", " ")
+                logger.info("Post DOM #%s preview: %s…", i + 1, preview)
+        return posts, page_text, last_scroll
 
     async def _host_images_for_posts(self, page, posts: list) -> list:
         for post in posts:

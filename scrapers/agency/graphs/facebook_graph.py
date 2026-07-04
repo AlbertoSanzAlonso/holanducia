@@ -27,6 +27,7 @@ class FacebookPipelineState(TypedDict, total=False):
     stats: Dict[str, Any]
     limit: int
     error: Optional[str]
+    ai_attempted: bool
 
 
 PersistFn = Callable[[Dict[str, Any], str], Coroutine[Any, Any, bool]]
@@ -97,7 +98,7 @@ def build_facebook_graph(
             if normalized:
                 posts.append(normalized)
         logger.info("LangGraph [ai_extract]: Scout extrajo %s posts vía IA", len(posts))
-        return {"posts": posts, "extraction_method": "ai"}
+        return {"posts": posts, "extraction_method": "ai", "ai_attempted": True}
 
     async def filter_candidates(state: FacebookPipelineState) -> FacebookPipelineState:
         posts = state.get("posts", [])
@@ -111,6 +112,10 @@ def build_facebook_graph(
             len(candidates),
             len(posts),
         )
+        if not candidates and posts:
+            for i, post in enumerate(posts[:2]):
+                preview = _post_text(post)[:120].replace("\n", " ")
+                logger.warning("Post sin keywords #%s: %s…", i + 1, preview)
 
         stats = dict(state.get("stats") or {})
         stats.update({"posts_total": len(posts), "keyword_candidates": len(candidates)})
@@ -140,6 +145,7 @@ def build_facebook_graph(
         return {"error": error, "saved_count": 0}
 
     def route_after_dom(state: FacebookPipelineState) -> Literal["filter", "diagnose"]:
+        # Siempre filtrar primero; si el DOM capturó basura de UI, el fallback IA entra tras filter.
         return "filter" if state.get("posts") else "diagnose"
 
     def route_after_diagnose(state: FacebookPipelineState) -> Literal["ai_extract", "abort"]:
@@ -148,8 +154,14 @@ def build_facebook_graph(
             return "abort"
         return "ai_extract"
 
-    def route_after_filter(state: FacebookPipelineState) -> Literal["process", "__end__"]:
-        return "process" if state.get("candidates") else END
+    def route_after_filter(
+        state: FacebookPipelineState,
+    ) -> Literal["process", "diagnose", "__end__"]:
+        if state.get("candidates"):
+            return "process"
+        if not state.get("ai_attempted"):
+            return "diagnose"
+        return END
 
     graph = StateGraph(FacebookPipelineState)
     graph.add_node("use_dom_posts", use_dom_posts)
@@ -163,7 +175,11 @@ def build_facebook_graph(
     graph.add_conditional_edges("use_dom_posts", route_after_dom, {"filter": "filter", "diagnose": "diagnose"})
     graph.add_conditional_edges("diagnose", route_after_diagnose, {"ai_extract": "ai_extract", "abort": "abort"})
     graph.add_edge("ai_extract", "filter")
-    graph.add_conditional_edges("filter", route_after_filter, {"process": "process", END: END})
+    graph.add_conditional_edges(
+        "filter",
+        route_after_filter,
+        {"process": "process", "diagnose": "diagnose", END: END},
+    )
     graph.add_edge("process", END)
     graph.add_edge("abort", END)
 
@@ -189,5 +205,6 @@ async def run_facebook_pipeline(
         "candidates": [],
         "saved_count": 0,
         "limit": limit,
+        "ai_attempted": False,
     }
     return await graph.ainvoke(initial)
