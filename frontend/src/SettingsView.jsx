@@ -173,12 +173,11 @@ export default function SettingsView() {
   const cancelJob = async (id) => {
     try {
       await api.cancelScrapingRequest(id)
-      fetchJobs()
-      refreshStats()
-    } catch (e) {
-      setNotification('Error al cancelar: ' + (e.message || 'desconocido'))
-      setTimeout(() => setNotification(null), 4000)
+    } catch {
+      // 400 = ya completada/cancelada, solo refrescar
     }
+    fetchJobs()
+    refreshStats()
   }
 
   const statusIcon = (status) => {
