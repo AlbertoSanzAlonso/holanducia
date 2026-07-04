@@ -25,6 +25,86 @@ class AnalystAgent:
             self.llm_key = None
             self.llm_model = None
 
+    async def parse_portal_detail(
+        self,
+        raw_content: str,
+        source: str,
+        *,
+        url: str = "",
+        pre_parsed: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Analiza ficha completa de portal con criterio de inversor; usa parser + IA."""
+        logger.info("🧠 Analyst portal detail: %s", url or source)
+
+        base = dict(pre_parsed or {})
+        base.pop("_parse_meta", None)
+
+        prompt = f"""
+Eres analista inmobiliario senior. Refina y completa los datos de ESTA FICHA INDIVIDUAL de {source}.
+URL: {url}
+
+REGLAS ESTRICTAS:
+1. TÍTULO: tipo de inmueble + zona (ej. "Chalet adosado en Caleta de Vélez, 4 hab."). NUNCA incluyas "41 fotos", "tour", "oportunidad", botones web.
+2. PRECIO: solo el precio de venta/alquiler en euros. Si no aparece, 0.
+3. size_m2: SOLO superficie construida o útil en m². NUNCA uses antigüedad ("20-30 años"), plantas, ni número de fotos.
+4. rooms / bathrooms: habitaciones y baños completos del anuncio.
+5. city: municipio. neighborhood: barrio/urbanización si aparece.
+6. description: texto limpio de la descripción del inmueble + características relevantes (piscina, terraza, garaje, placas solares, licencia turística). Sin legal boilerplate ni publicidad de la inmobiliaria.
+7. has_parking, has_terrace, has_pool: true/false según el anuncio.
+8. is_individual: true si es particular, false si es inmobiliaria/profesional.
+9. catastro_ref: referencia del anuncio si existe (ej. "000018").
+10. year_built: solo si hay año numérico claro; si dice "20-30 años" deja null.
+
+Datos pre-extraídos (puedes corregirlos):
+{json.dumps({k: v for k, v in base.items() if k in {"title","price","city","neighborhood","size_m2","rooms","bathrooms","description","has_parking","has_terrace","has_pool","is_individual","catastro_ref"}}, ensure_ascii=False)[:3000]}
+
+Texto de la ficha:
+{(raw_content or "")[:14000]}
+
+Devuelve SOLO JSON:
+{{
+  "title": "...",
+  "price": número,
+  "city": "... o null",
+  "neighborhood": "... o null",
+  "description": "...",
+  "rooms": número o null,
+  "bathrooms": número o null,
+  "size_m2": número o null,
+  "has_parking": true/false,
+  "has_terrace": true/false,
+  "has_pool": true/false,
+  "is_individual": true/false,
+  "catastro_ref": "... o null",
+  "year_built": número o null,
+  "images": [],
+  "is_real_estate": true
+}}
+"""
+        result = await self._call_ai(
+            prompt, source, prequalified=False, raw_content=raw_content, is_portal=True
+        )
+        if not result:
+            if base.get("title") and (base.get("price") or base.get("size_m2")):
+                base["is_real_estate"] = True
+                base["source"] = source
+                base["price"] = self._clean_price(base.get("price"))
+                return base
+            return None
+
+        for key, val in base.items():
+            if key in ("images", "url", "source"):
+                continue
+            if result.get(key) in (None, "", 0) and val not in (None, "", 0):
+                result[key] = val
+
+        if pre_parsed and pre_parsed.get("images") and not result.get("images"):
+            result["images"] = pre_parsed["images"]
+        if url and not result.get("url"):
+            result["url"] = url
+
+        return result
+
     async def parse_raw_text(
         self,
         raw_content: str,
@@ -111,6 +191,7 @@ class AnalystAgent:
         is_bulk=False,
         prequalified: bool = False,
         raw_content: str = "",
+        is_portal: bool = False,
     ):
         """Llamada genérica a OpenAI o Groq (compatible OpenAI)."""
         if not self.llm_key:
@@ -144,12 +225,19 @@ class AnalystAgent:
                         data["title"] = (first_line[:120] if len(first_line) > 15 else None) or "Anuncio inmobiliario"
                     if prequalified and not data.get("city"):
                         data["city"] = None
-                    elif not data.get("city"):
+                    elif not data.get("city") and not is_portal:
                         data["city"] = "Málaga"
                     data["price"] = self._clean_price(data.get("price"))
                     if not isinstance(data.get("images"), list):
                         data["images"] = []
                     data["source"] = source
+                    if data.get("is_individual") is False:
+                        data["is_agency"] = True
+                    elif data.get("is_individual") is True:
+                        data["is_agency"] = False
+                    for bool_field in ("has_parking", "has_terrace", "has_pool"):
+                        if bool_field in data:
+                            data[bool_field] = bool(data[bool_field])
                     return data
                 else:
                     leads = data.get("properties", data) if isinstance(data, dict) else data
