@@ -211,15 +211,21 @@ async def fetch_portal_page(
     Intenta cargar una página de portal. Si Crawl4AI cae en Akamai/Imperva,
     prueba Firecrawl (solo índices por defecto) y luego Playwright stealth.
     En fichas donde Playwright también falla, Firecrawl como último recurso.
+    Habitaclia: Firecrawl primero (Crawl4AI/Playwright siempre bloqueados).
     """
     index_only = os.getenv("FIRECRAWL_INDEX_ONLY", "true").lower() == "true"
     allow_firecrawl = (not index_only) or is_portal_index_url(url)
 
-    page = await crawl4ai_fetch(url)
-    if page and not is_antibot_content(markdown=page.get("markdown", ""), html=page.get("html", "")):
-        if _index_has_listings(page, url):
-            return page
-        logger.warning("Crawl4AI devolvió índice sin fichas — probando Firecrawl: %s", url[:70])
+    skip_crawl4ai = "habitaclia.com" in url and not is_portal_index_url(url)
+
+    if not skip_crawl4ai:
+        page = await crawl4ai_fetch(url)
+        if page and not is_antibot_content(markdown=page.get("markdown", ""), html=page.get("html", "")):
+            if _index_has_listings(page, url):
+                return page
+            logger.warning("Crawl4AI devolvió índice sin fichas — probando Firecrawl: %s", url[:70])
+    else:
+        page = None
 
     if not allow_firecrawl:
         logger.info(
@@ -235,7 +241,10 @@ async def fetch_portal_page(
     if page:
         logger.warning("Crawl4AI devolvió página WAF — probando Firecrawl: %s", url[:70])
     else:
-        logger.warning("Crawl4AI falló — probando Firecrawl: %s", url[:70])
+        if skip_crawl4ai:
+            logger.info("Habitaclia ficha — Firecrawl directo: %s", url[:70])
+        else:
+            logger.warning("Crawl4AI falló — probando Firecrawl: %s", url[:70])
 
     page = await fetch_with_firecrawl(url)
     if page and _index_has_listings(page, url):
