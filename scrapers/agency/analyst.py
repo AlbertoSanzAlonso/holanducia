@@ -1,29 +1,15 @@
 import logging
-import httpx
 import json
-import hashlib
-import os
 import re
 from typing import Optional, Dict, Any, List
+
+from scrapers.agency.llm_client import chat_completion, has_llm_key
 
 logger = logging.getLogger(__name__)
 
 class AnalystAgent:
     def __init__(self):
-        self.groq_key = os.environ.get("GROQ_API_KEY")
-        self.openai_key = os.environ.get("OPENAI_API_KEY")
-        if self.groq_key:
-            self.llm_url = "https://api.groq.com/openai/v1/chat/completions"
-            self.llm_key = self.groq_key
-            self.llm_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-        elif self.openai_key:
-            self.llm_url = "https://api.openai.com/v1/chat/completions"
-            self.llm_key = self.openai_key
-            self.llm_model = "gpt-4o-mini"
-        else:
-            self.llm_url = None
-            self.llm_key = None
-            self.llm_model = None
+        self.llm_key = has_llm_key()
 
     async def parse_portal_detail(
         self,
@@ -198,58 +184,51 @@ Devuelve SOLO JSON:
             logger.error("❌ Falta GROQ_API_KEY u OPENAI_API_KEY para el análisis IA.")
             return [] if is_bulk else None
 
-        headers = {"Authorization": f"Bearer {self.llm_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": self.llm_model,
-            "messages": [{"role": "user", "content": prompt}]
-        }
-        
+        content = await chat_completion([{"role": "user", "content": prompt}])
+        if not content:
+            return [] if is_bulk else None
+
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(self.llm_url, json=payload, headers=headers)
-                response.raise_for_status()
-                content = response.json()['choices'][0]['message']['content']
-                
-                # Limpieza de markdown
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0].strip()
-                
-                data = json.loads(content)
-                
-                if not is_bulk:
-                    if not data.get("is_real_estate", True):
-                        logger.warning("🚫 Clasificado como NO inmobiliario por IA.")
-                        return None
-                    if not data.get("title") or data["title"] in ("None", "null"):
-                        first_line = (raw_content.split("\n")[0] if prequalified else "").strip()
-                        data["title"] = (first_line[:120] if len(first_line) > 15 else None) or "Anuncio inmobiliario"
-                    if prequalified and not data.get("city"):
-                        data["city"] = None
-                    elif not data.get("city") and not is_portal:
-                        data["city"] = "Málaga"
-                    data["price"] = self._clean_price(data.get("price"))
-                    if not isinstance(data.get("images"), list):
-                        data["images"] = []
-                    data["source"] = source
-                    if data.get("is_individual") is False:
-                        data["is_agency"] = True
-                    elif data.get("is_individual") is True:
-                        data["is_agency"] = False
-                    for bool_field in ("has_parking", "has_terrace", "has_pool"):
-                        if bool_field in data:
-                            data[bool_field] = bool(data[bool_field])
-                    return data
-                else:
-                    leads = data.get("properties", data) if isinstance(data, dict) else data
-                    # Saneamiento de leads masivos
-                    for l in leads:
-                        l["source"] = source
-                        l["price"] = self._clean_price(l.get("price"))
-                        if not isinstance(l.get("images"), list):
-                            l["images"] = []
-                    return leads
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+
+            data = json.loads(content)
+
+            if not is_bulk:
+                if not data.get("is_real_estate", True):
+                    logger.warning("🚫 Clasificado como NO inmobiliario por IA.")
+                    return None
+                if not data.get("title") or data["title"] in ("None", "null"):
+                    first_line = (raw_content.split("\n")[0] if prequalified else "").strip()
+                    data["title"] = (first_line[:120] if len(first_line) > 15 else None) or "Anuncio inmobiliario"
+                if prequalified and not data.get("city"):
+                    data["city"] = None
+                elif not data.get("city") and not is_portal:
+                    data["city"] = "Málaga"
+                data["price"] = self._clean_price(data.get("price"))
+                if not isinstance(data.get("images"), list):
+                    data["images"] = []
+                data["source"] = source
+                if data.get("is_individual") is False:
+                    data["is_agency"] = True
+                elif data.get("is_individual") is True:
+                    data["is_agency"] = False
+                for bool_field in ("has_parking", "has_terrace", "has_pool"):
+                    if bool_field in data:
+                        data[bool_field] = bool(data[bool_field])
+                return data
+
+            leads = data.get("properties", data) if isinstance(data, dict) else data
+            for l in leads:
+                l["source"] = source
+                l["price"] = self._clean_price(l.get("price"))
+                if not isinstance(l.get("images"), list):
+                    l["images"] = []
+            return leads
         except Exception as e:
-            logger.error(f"❌ Error en llamada AI: {e}")
+            logger.error(f"❌ Error parseando respuesta AI: {e}")
             return [] if is_bulk else None
 
     def _clean_price(self, price_val):

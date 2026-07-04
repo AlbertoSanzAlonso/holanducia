@@ -197,4 +197,6 @@ def is_portal_index_url(url: str) -> bool:
         return True
     if re.search(r"/comprar-vivienda-en-[^/]+$", lower):
         return True
+    if re.search(r"/venta/[^/]+$", lower):
+        return True
     return False

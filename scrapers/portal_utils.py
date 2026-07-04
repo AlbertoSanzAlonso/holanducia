@@ -29,7 +29,8 @@ DETAIL_PATH_HINTS = (
 
 
 def normalize_portal_url(raw: str, page_url: str = "") -> str:
-    raw = (raw or "").strip().split("#")[0].split("?")[0]
+    raw = (raw or "").strip().strip(")'\"[],;")
+    raw = raw.split("#")[0].split("?")[0]
     if not raw:
         return ""
     if raw.startswith("/"):
@@ -38,7 +39,7 @@ def normalize_portal_url(raw: str, page_url: str = "") -> str:
         parsed = urlparse(page_url)
         raw = urljoin(f"{parsed.scheme}://{parsed.netloc}", raw)
     if raw.startswith("http"):
-        return raw.rstrip("/")
+        return raw.rstrip("/).")
     return ""
 
 
@@ -50,6 +51,16 @@ def is_listing_detail_url(url: str) -> bool:
     if not any(portal in host for portal in PORTAL_HOSTS):
         return False
     path = urlparse(url).path.lower()
+
+    if "pisos.com" in host:
+        return path.startswith("/comprar/") and len(path.split("/")) >= 3
+
+    if "fotocasa.es" in host:
+        return bool(re.search(r"/\d+/\d+\.htm", path)) or "/vivienda/" in path
+
+    if "habitaclia.com" in host:
+        return bool(re.search(r"/\d+\.htm", path)) or "/vivienda-" in path
+
     return any(hint in path for hint in DETAIL_PATH_HINTS)
 
 

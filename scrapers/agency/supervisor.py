@@ -5,8 +5,7 @@ import os
 import re
 from typing import Any, Dict, Optional, TypedDict
 
-import httpx
-
+from scrapers.agency.llm_client import chat_completion, has_llm_key
 from scrapers.fb_utils import is_property_listing_text, is_quality_facebook_lead
 from scrapers.portal_utils import is_facebook_post_url, is_valid_listing_url
 
@@ -25,20 +24,7 @@ class SupervisorAgent:
     """Revisa cada anuncio individualmente antes de guardarlo."""
 
     def __init__(self):
-        self.groq_key = os.environ.get("GROQ_API_KEY")
-        self.openai_key = os.environ.get("OPENAI_API_KEY")
-        if self.groq_key:
-            self.llm_url = "https://api.groq.com/openai/v1/chat/completions"
-            self.llm_key = self.groq_key
-            self.llm_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-        elif self.openai_key:
-            self.llm_url = "https://api.openai.com/v1/chat/completions"
-            self.llm_key = self.openai_key
-            self.llm_model = "gpt-4o-mini"
-        else:
-            self.llm_url = None
-            self.llm_key = None
-            self.llm_model = None
+        self.llm_key = has_llm_key()
 
     async def review(
         self,
@@ -162,22 +148,20 @@ Devuelve SOLO JSON:
 {{"approved": true/false, "reason": "motivo breve", "quality_score": 0-10}}
 """
         try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                response = await client.post(
-                    self.llm_url,
-                    headers={"Authorization": f"Bearer {self.llm_key}", "Content-Type": "application/json"},
-                    json={"model": self.llm_model, "messages": [{"role": "user", "content": prompt}]},
-                )
-                response.raise_for_status()
-                content = response.json()["choices"][0]["message"]["content"]
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0].strip()
-                data = json.loads(content)
-                return {
-                    "approved": bool(data.get("approved")),
-                    "reason": str(data.get("reason") or "ia_review"),
-                    "quality_score": int(data.get("quality_score") or 0),
-                }
+            content = await chat_completion(
+                [{"role": "user", "content": prompt}],
+                timeout=45.0,
+            )
+            if not content:
+                return None
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            data = json.loads(content)
+            return {
+                "approved": bool(data.get("approved")),
+                "reason": str(data.get("reason") or "ia_review"),
+                "quality_score": int(data.get("quality_score") or 0),
+            }
         except Exception as e:
             logger.warning("Supervisor IA falló, usando heurística: %s", e)
             return None

@@ -2,8 +2,6 @@ import json
 import logging
 from typing import Any, Dict, List
 
-import httpx
-
 from scrapers.agency.analyst import AnalystAgent
 
 logger = logging.getLogger(__name__)
@@ -65,25 +63,22 @@ Texto:
         return []
 
     async def _call_ai_json(self, prompt: str) -> Any:
-        headers = {"Authorization": f"Bearer {self.llm_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": self.llm_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-        }
+        from scrapers.agency.llm_client import chat_completion
+
+        content = await chat_completion(
+            [{"role": "user", "content": prompt}],
+            temperature=0.1,
+            timeout=60.0,
+        )
+        if not content:
+            return None
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(self.llm_url, json=payload, headers=headers)
-                response.raise_for_status()
-                content = response.json()["choices"][0]["message"]["content"]
-
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0].strip()
-                elif "```" in content:
-                    content = content.split("```")[1].split("```")[0].strip()
-
-                return json.loads(content)
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            return json.loads(content)
         except Exception as e:
-            logger.error("Scout: error en llamada IA: %s", e)
+            logger.error("Scout: error parseando IA: %s", e)
             return None

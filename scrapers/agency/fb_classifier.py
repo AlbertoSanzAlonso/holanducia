@@ -4,8 +4,7 @@ import logging
 import os
 from typing import Optional, TypedDict
 
-import httpx
-
+from scrapers.agency.llm_client import chat_completion, has_llm_key
 from scrapers.fb_utils import is_property_listing_text
 
 logger = logging.getLogger(__name__)
@@ -23,20 +22,7 @@ class FacebookClassifierAgent:
     """Primera línea de defensa: clasificación binaria estricta antes del Analyst."""
 
     def __init__(self):
-        self.groq_key = os.environ.get("GROQ_API_KEY")
-        self.openai_key = os.environ.get("OPENAI_API_KEY")
-        if self.groq_key:
-            self.llm_url = "https://api.groq.com/openai/v1/chat/completions"
-            self.llm_key = self.groq_key
-            self.llm_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-        elif self.openai_key:
-            self.llm_url = "https://api.openai.com/v1/chat/completions"
-            self.llm_key = self.openai_key
-            self.llm_model = "gpt-4o-mini"
-        else:
-            self.llm_url = None
-            self.llm_key = None
-            self.llm_model = None
+        self.llm_key = has_llm_key()
 
     async def classify(self, text: str) -> ClassifyResult:
         if not is_property_listing_text(text):
@@ -82,25 +68,20 @@ JSON estricto:
 {{"is_listing": true/false, "confidence": 0.0-1.0, "reason": "motivo breve en español"}}"""
 
         try:
-            async with httpx.AsyncClient(timeout=40.0) as client:
-                response = await client.post(
-                    self.llm_url,
-                    headers={"Authorization": f"Bearer {self.llm_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": self.llm_model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.1,
-                    },
-                )
-                response.raise_for_status()
-                content = response.json()["choices"][0]["message"]["content"]
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0].strip()
-                data = json.loads(content)
-                is_listing = bool(data.get("is_listing"))
-                confidence = float(data.get("confidence") or 0)
-                reason = str(data.get("reason") or "ia_classify")
-                return {"is_listing": is_listing, "confidence": confidence, "reason": reason}
+            content = await chat_completion(
+                [{"role": "user", "content": prompt}],
+                temperature=0.1,
+                timeout=40.0,
+            )
+            if not content:
+                raise RuntimeError("sin respuesta LLM")
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            data = json.loads(content)
+            is_listing = bool(data.get("is_listing"))
+            confidence = float(data.get("confidence") or 0)
+            reason = str(data.get("reason") or "ia_classify")
+            return {"is_listing": is_listing, "confidence": confidence, "reason": reason}
         except Exception as e:
             logger.warning("FacebookClassifier IA falló: %s", e)
             strict = is_property_listing_text(text)
