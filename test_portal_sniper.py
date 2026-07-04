@@ -10,7 +10,7 @@ from scrapers.db_connector import DatabaseConnector
 DEFAULT_PORTALS = {
     "malaga": [
         "https://www.fotocasa.es/es/comprar/viviendas/malaga-provincia/todas-las-zonas/l",
-        "https://www.habitaclia.com/comprar-vivienda-en-malaga/listado.htm",
+        "https://www.habitaclia.com/viviendas-malaga.htm",
         "https://www.pisos.com/venta/pisos-malaga/",
     ]
 }

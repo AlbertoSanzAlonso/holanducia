@@ -189,6 +189,10 @@ def assign_images_to_leads(leads: List[dict], page_images: List[str], max_per_le
 
 def is_portal_index_url(url: str) -> bool:
     lower = url.lower().rstrip("/")
+    if re.search(r"/viviendas-[^/]+\.htm$", lower):
+        return True
+    if lower.endswith(("/selinmueble.htm", "/buscador.htm")):
+        return True
     if lower.endswith(("/l", "/listado", "/listado.htm")):
         return True
     if re.search(r"/venta/pisos-[^/]+$", lower):

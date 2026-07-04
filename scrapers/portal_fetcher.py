@@ -7,9 +7,17 @@ import httpx
 from playwright.async_api import async_playwright
 
 from scrapers.image_utils import extract_image_urls, is_portal_index_url
-from scrapers.portal_utils import normalize_portal_url
+from scrapers.portal_utils import extract_listing_urls
 
 logger = logging.getLogger(__name__)
+
+ERROR_PAGE_MARKERS = (
+    "página no encontrada",
+    "pagina no encontrada",
+    "error404",
+    'class="e404"',
+    "no se ha encontrado la página",
+)
 
 ANTIBOT_MARKERS = (
     "akamai",
@@ -24,6 +32,14 @@ ANTIBOT_MARKERS = (
     "access denied",
     "bot detection",
     "docs.imperva.com",
+    "sentimos la interrupción",
+    "sentimos las molestias",
+    "no podemos mostrar",
+    "bloqueo de seguridad",
+    "security check",
+    "verify you are human",
+    "are you a robot",
+    "comprobar que eres",
 )
 
 USER_AGENT = (
@@ -37,6 +53,11 @@ COOKIE_SELECTORS = (
     "button[id*='accept']",
     ".sui-AtomButton--primary",
 )
+
+
+def is_error_page(*, markdown: str = "", html: str = "") -> bool:
+    blob = f"{markdown[:4000]} {html[:4000]}".lower()
+    return any(marker in blob for marker in ERROR_PAGE_MARKERS)
 
 
 def is_antibot_content(*, error: str = "", markdown: str = "", html: str = "") -> bool:
@@ -74,6 +95,9 @@ async def fetch_with_firecrawl(url: str) -> Optional[Dict[str, Any]]:
                 return None
             if is_antibot_content(markdown=markdown, html=html):
                 logger.warning("Firecrawl sigue bloqueado por WAF: %s", url[:70])
+                return None
+            if is_error_page(markdown=markdown, html=html):
+                logger.warning("Firecrawl devolvió 404/error de portal: %s", url[:70])
                 return None
             logger.info("Firecrawl OK: %s", url[:70])
             return _normalize_page(markdown, html)
@@ -116,7 +140,10 @@ async def fetch_with_playwright(url: str) -> Optional[Dict[str, Any]]:
                     continue
 
             try:
-                await page.wait_for_selector('a[href*=".htm"], a[href*="/comprar/"]', timeout=12000)
+                await page.wait_for_selector(
+                    'a[href*="/comprar/vivienda/"], a[href*=".htm"], a[href*="/comprar/"]',
+                    timeout=12000,
+                )
             except Exception:
                 pass
 
@@ -130,6 +157,9 @@ async def fetch_with_playwright(url: str) -> Optional[Dict[str, Any]]:
         if is_antibot_content(markdown=markdown, html=html):
             logger.warning("Playwright bloqueado por WAF: %s", url[:70])
             return None
+        if is_error_page(markdown=markdown, html=html):
+            logger.warning("Playwright devolvió 404/error de portal: %s", url[:70])
+            return None
         if len((markdown or "").strip()) < 80:
             logger.warning("Playwright: contenido vacío en %s", url[:70])
             return None
@@ -138,6 +168,19 @@ async def fetch_with_playwright(url: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.warning("Playwright falló en %s: %s", url[:60], e)
         return None
+
+
+def _index_has_listings(page: Dict[str, Any], url: str) -> bool:
+    if not is_portal_index_url(url):
+        return True
+    count = len(
+        extract_listing_urls(
+            page.get("html") or "",
+            page.get("markdown") or "",
+            url,
+        )
+    )
+    return count > 0
 
 
 async def fetch_portal_page(
@@ -154,7 +197,9 @@ async def fetch_portal_page(
 
     page = await crawl4ai_fetch(url)
     if page and not is_antibot_content(markdown=page.get("markdown", ""), html=page.get("html", "")):
-        return page
+        if _index_has_listings(page, url):
+            return page
+        logger.warning("Crawl4AI devolvió índice sin fichas — probando Firecrawl: %s", url[:70])
 
     if not allow_firecrawl:
         logger.info(
@@ -169,8 +214,10 @@ async def fetch_portal_page(
         logger.warning("Crawl4AI falló — probando Firecrawl: %s", url[:70])
 
     page = await fetch_with_firecrawl(url)
-    if page:
+    if page and _index_has_listings(page, url):
         return page
-
-    logger.warning("Firecrawl no disponible o bloqueado — probando Playwright: %s", url[:70])
+    if page:
+        logger.warning("Firecrawl sin fichas en índice — probando Playwright: %s", url[:70])
+    else:
+        logger.warning("Firecrawl no disponible o bloqueado — probando Playwright: %s", url[:70])
     return await fetch_with_playwright(url)

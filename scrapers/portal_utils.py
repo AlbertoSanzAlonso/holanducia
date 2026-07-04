@@ -1,10 +1,69 @@
+import logging
 import re
+import unicodedata
 from urllib.parse import urlparse, urljoin
 
 from scrapers.image_utils import is_portal_index_url
 
+logger = logging.getLogger(__name__)
+
 PORTAL_HOSTS = ("pisos.com", "fotocasa.es", "habitaclia.com", "idealista.com")
 MAX_DETAIL_URLS_PER_PORTAL = 50
+
+# Ficha Habitaclia: comprar-piso-malaga-centro-i55621000000139.htm
+HABITACLIA_DETAIL_RE = re.compile(
+    r"(?:https?://(?:www\.)?habitaclia\.com/)?comprar-[^\s\"'<>]+-i\d+\.htm",
+    re.I,
+)
+HABITACLIA_LEGACY_LISTADO_RE = re.compile(
+    r"^https?://(?:www\.)?habitaclia\.com/comprar-vivienda-en-([^/]+)/listado\.htm$",
+    re.I,
+)
+# Ficha Fotocasa: /es/comprar/vivienda/{zona}/{slug}/{id}/d
+FOTOCASA_DETAIL_RE = re.compile(
+    r"(?:https?://(?:www\.)?fotocasa\.es)?/es/comprar/vivienda/[^\"'\s<>]+/\d+(?:/\d+)?(?:/d)?",
+    re.I,
+)
+
+
+def _city_slug(raw: str) -> str:
+    normalized = unicodedata.normalize("NFD", (raw or "").strip())
+    ascii_slug = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
+    return ascii_slug.lower().replace(" ", "-")
+
+
+def normalize_habitaclia_index_url(url: str) -> str:
+    """Migra índices Habitaclia obsoletos (listado.htm 404) al formato actual."""
+    clean = (url or "").strip().split("?")[0].rstrip("/")
+    if not clean:
+        return url
+
+    match = HABITACLIA_LEGACY_LISTADO_RE.match(clean)
+    if match:
+        return f"https://www.habitaclia.com/viviendas-{_city_slug(match.group(1))}.htm"
+
+    legacy_hub = re.match(
+        r"^https?://(?:www\.)?habitaclia\.com/comprar-vivienda-en-([^/.]+)/selinmueble\.htm$",
+        clean,
+        re.I,
+    )
+    if legacy_hub:
+        return f"https://www.habitaclia.com/viviendas-{_city_slug(legacy_hub.group(1))}.htm"
+
+    return url
+
+
+def normalize_portal_urls(urls: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for raw in urls or []:
+        url = (raw or "").strip()
+        if not url:
+            continue
+        migrated = normalize_habitaclia_index_url(url)
+        if migrated != url:
+            logger.info("URL Habitaclia migrada: %s → %s", url[:80], migrated[:80])
+        normalized.append(migrated)
+    return list(dict.fromkeys(normalized))
 
 
 def portal_host(url: str) -> str:
@@ -56,10 +115,10 @@ def is_listing_detail_url(url: str) -> bool:
         return path.startswith("/comprar/") and len(path.split("/")) >= 3
 
     if "fotocasa.es" in host:
-        return bool(re.search(r"/\d+/\d+\.htm", path)) or "/vivienda/" in path
+        return bool(re.search(r"/es/comprar/vivienda/.+/\d+", path))
 
     if "habitaclia.com" in host:
-        return bool(re.search(r"/\d+\.htm", path)) or "/vivienda-" in path
+        return bool(re.search(r"-i\d+\.htm$", path)) or bool(re.search(r"/\d+\.htm$", path))
 
     return any(hint in path for hint in DETAIL_PATH_HINTS)
 
@@ -103,11 +162,18 @@ def external_id_from_url(url: str) -> str:
 
 def extract_listing_urls(html: str = "", markdown: str = "", page_url: str = "") -> list[str]:
     candidates: list[str] = []
+    combined = f"{html or ''}\n{markdown or ''}"
 
     for text in (html or "", markdown or ""):
         candidates.extend(re.findall(r'href=["\']([^"\']+)["\']', text, flags=re.I))
         candidates.extend(re.findall(r"\((https?://[^)\s]+)\)", text))
         candidates.extend(re.findall(r"https?://[^\s\"'<>]+", text))
+
+    if "habitaclia.com" in (page_url or "").lower() or "habitaclia.com" in combined.lower():
+        candidates.extend(HABITACLIA_DETAIL_RE.findall(combined))
+
+    if "fotocasa.es" in (page_url or "").lower() or "fotocasa.es" in combined.lower():
+        candidates.extend(FOTOCASA_DETAIL_RE.findall(combined))
 
     seen: set[str] = set()
     listing_urls: list[str] = []

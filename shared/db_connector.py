@@ -4,11 +4,13 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from scrapers.portal_utils import normalize_portal_urls
+
 logger = logging.getLogger(__name__)
 
 PORTAL_TEMPLATES = {
     "fotocasa": "https://www.fotocasa.es/es/comprar/viviendas/{city}-provincia/todas-las-zonas/l",
-    "habitaclia": "https://www.habitaclia.com/comprar-vivienda-en-{city}/listado.htm",
+    "habitaclia": "https://www.habitaclia.com/viviendas-{city}.htm",
     "pisos.com": "https://www.pisos.com/venta/pisos-{city}/",
 }
 
@@ -82,7 +84,7 @@ def build_portal_urls(settings: Optional[Dict[str, Any]]) -> List[str]:
     if isinstance(urls, str):
         urls = [u.strip() for u in urls.split(",") if u.strip()]
     if urls:
-        return urls
+        return normalize_portal_urls(urls)
 
     cities = settings.get("cities") or ["malaga"]
     portals = [p.strip().lower() for p in (settings.get("portals") or "").split(",") if p.strip()]
@@ -100,4 +102,4 @@ def build_portal_urls(settings: Optional[Dict[str, Any]]) -> List[str]:
             elif "pisos" in portal:
                 built.append(PORTAL_TEMPLATES["pisos.com"].format(city=city_slug))
 
-    return list(dict.fromkeys(built))
+    return normalize_portal_urls(list(dict.fromkeys(built)))

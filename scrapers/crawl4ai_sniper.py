@@ -7,6 +7,7 @@ from scrapers.portal_sniper_core import (
     build_detail_url_queue,
     scrape_and_persist_details,
 )
+from scrapers.portal_utils import normalize_portal_urls
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class Crawl4AISniper(BaseScraper):
 
     async def scrape_portals(self, urls: list):
         """Índice → ficha → guardar en BD al instante (streaming)."""
+        urls = normalize_portal_urls(urls or [])
         if not (os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")):
             logger.error("No hay OPENAI_API_KEY ni GROQ_API_KEY configurada. Misión Sniper abortada.")
             return 0

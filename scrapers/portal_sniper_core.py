@@ -64,6 +64,19 @@ async def discover_from_index(
         data.get("markdown") or "",
         index_url,
     )
+    if not listing_urls and "habitaclia.com" in index_url.lower():
+        snippet = (data.get("markdown") or data.get("html") or "")[:200].replace("\n", " ")
+        if "no encontrada" in snippet.lower() or "error404" in snippet.lower():
+            logger.warning(
+                "Índice Habitaclia obsoleto (404): %s — usa viviendas-{ciudad}.htm",
+                index_url[:80],
+            )
+        else:
+            logger.warning(
+                "Índice Habitaclia sin fichas en HTML (%s): %s",
+                snippet[:120],
+                index_url[:80],
+            )
     logger.info("Índice %s → %s URLs de fichas (pendientes de scrapear/guardar)", index_url[:60], len(listing_urls))
     return listing_urls[:MAX_PER_INDEX]
 

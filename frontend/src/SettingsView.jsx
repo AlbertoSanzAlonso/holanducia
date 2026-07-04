@@ -100,7 +100,7 @@ export default function SettingsView() {
         urls.push(`https://www.fotocasa.es/es/comprar/viviendas/${slug}-provincia/todas-las-zonas/l`)
       }
       if (portals.some((p) => p.includes('habitaclia'))) {
-        urls.push(`https://www.habitaclia.com/comprar-vivienda-en-${slug}/listado.htm`)
+        urls.push(`https://www.habitaclia.com/viviendas-${slug}.htm`)
       }
       if (portals.some((p) => p.includes('pisos'))) {
         urls.push(`https://www.pisos.com/venta/pisos-${slug}/`)

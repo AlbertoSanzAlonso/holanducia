@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from scrapers.agency.hunter import HunterAgent
 from scrapers.db_connector import DatabaseConnector, build_portal_urls
 from scrapers.facebook_scraper import FacebookScraper
-from scrapers.portal_utils import portal_host, prioritize_portal_urls, interleave_portal_urls
+from scrapers.portal_utils import portal_host, prioritize_portal_urls, interleave_portal_urls, normalize_portal_urls
 from scrapers.sync_context import SyncSession, mass_fb_scroll_steps, mass_mode, sync_mode, sync_session
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,8 @@ class DirectorAgent:
 
         if isinstance(portal_urls, str):
             portal_urls = [u.strip() for u in portal_urls.split(",") if u.strip()]
+
+        portal_urls = normalize_portal_urls(portal_urls)
 
         if not fb_groups and not portal_urls:
             if _facebook_enabled(settings):
