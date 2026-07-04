@@ -4,22 +4,34 @@ import {
   Search, MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
   Eye, Mail, MoreHorizontal, ChevronRight, ChevronLeft, Menu, X,
   ShieldCheck, AlertTriangle, Trash2, CheckCircle2, FolderHeart, Tag,
-  BarChart3, Settings as SettingsIcon, LayoutGrid
+  BarChart3, Settings as SettingsIcon, LayoutGrid, ListPlus, Edit3, Bookmark
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import PropertyIntelligenceModal from './PropertyIntelligenceModal'
 import AdvisorChat from './AdvisorChat'
 import SettingsView from './SettingsView'
+import PropertyFilters from './PropertyFilters'
+import ListEditModal from './ListEditModal'
 import { formatPrice, getListingUrl, resolveImageUrl, hasPropertyImage } from './utils/propertyDisplay'
+import {
+  DEFAULT_FILTERS,
+  applyPropertyFilters,
+  getUniqueCities,
+  countActiveFilters,
+} from './utils/propertyFilters'
 
 function App() {
   const [properties, setProperties] = useState([])
   const [categories, setCategories] = useState([])
+  const [lists, setLists] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedCategoryId, setSelectedCategoryId] = useState(null)
+  const [selectedListId, setSelectedListId] = useState(null)
+  const [listModal, setListModal] = useState(null)
   const [view, setView] = useState('dashboard')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [filtersExpanded, setFiltersExpanded] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
   const [selectedProperty, setSelectedProperty] = useState(null)
@@ -31,12 +43,14 @@ function App() {
     setLoading(true)
     setErrorField(null)
     try {
-        const [propsData, catsData] = await Promise.all([
+        const [propsData, catsData, listsData] = await Promise.all([
           api.getProperties(),
           api.getCategories(),
+          api.getLists().catch(() => []),
         ])
         setProperties(Array.isArray(propsData) ? propsData : [])
         setCategories(Array.isArray(catsData) ? catsData : [])
+        setLists(Array.isArray(listsData) ? listsData : [])
     } catch (e) {
         setErrorField(`No se pudo conectar con la API (${API_URL || 'proxy /api en Vercel'}). Si usas HTTP en el VPS, deja VITE_API_URL vacía y redeploy.`)
         console.error('fetchData:', e)
@@ -70,6 +84,46 @@ function App() {
     fetchData()
   }
 
+  const addSelectionToList = async (listId) => {
+    await api.addToList(listId, Array.from(selectedIds))
+    setSelectedIds(new Set())
+    fetchData()
+  }
+
+  const removeSelectionFromList = async () => {
+    if (!selectedListId) return
+    await api.removeFromList(selectedListId, Array.from(selectedIds))
+    setSelectedIds(new Set())
+    fetchData()
+  }
+
+  const saveList = async (data) => {
+    if (listModal?.list?.id) {
+      await api.updateList(listModal.list.id, data)
+    } else {
+      const created = await api.createList(data)
+      setSelectedListId(created.id)
+      setSelectedCategoryId(null)
+    }
+    fetchData()
+  }
+
+  const deleteList = async (id) => {
+    await api.deleteList(id)
+    if (selectedListId === id) setSelectedListId(null)
+    fetchData()
+  }
+
+  const addPropertyToList = async (listId, propertyId) => {
+    await api.addToList(listId, [propertyId])
+    fetchData()
+  }
+
+  const removePropertyFromList = async (listId, propertyId) => {
+    await api.removeFromList(listId, [propertyId])
+    fetchData()
+  }
+
   const checkScrapingStatus = async () => {
     try {
       const data = await api.getLatestScrapingRequest()
@@ -89,29 +143,48 @@ function App() {
     return () => clearInterval(interval)
   }, [])
 
-  const filteredProperties = properties.filter(p => {
-    const s = searchTerm.toLowerCase()
-    const matchesSearch = (p.title || "").toLowerCase().includes(s) || (p.city || "").toLowerCase().includes(s)
-    if (!matchesSearch) return false
-    if (selectedCategoryId) return p.category_id === selectedCategoryId
-    if (filter === 'hot') return p.opportunity_score >= 80
-    if (filter === 'particular') return p.is_individual
-    return true
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filters, filter, selectedCategoryId, selectedListId])
+
+  const selectedList = lists.find((l) => l.id === selectedListId) || null
+  const listPropertyIds = selectedList?.property_ids ?? null
+
+  const cityOptions = getUniqueCities(properties)
+  const activeFilterCount = countActiveFilters(filters)
+
+  const filteredProperties = applyPropertyFilters(properties, filters, {
+    filter,
+    selectedCategoryId,
+    listPropertyIds,
   })
 
   const paginatedProperties = filteredProperties.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  const resetFilters = () => {
+    setFilters(DEFAULT_FILTERS)
+    setFilter('all')
+    setSelectedCategoryId(null)
+    setSelectedListId(null)
+    setCurrentPage(1)
+  }
 
   const emptyMessage = (() => {
     if (loading) return null
     if (errorField) return errorField
     if (properties.length === 0) return 'No hay propiedades en la base de datos. Usa Configuración → Actualizar ahora para scrapear.'
+    if (selectedListId) {
+      return selectedList
+        ? `La lista "${selectedList.name}" está vacía. Selecciona propiedades y añádelas con la barra de acciones.`
+        : 'Lista no encontrada.'
+    }
     if (selectedCategoryId) {
       const cat = categories.find(c => c.id === selectedCategoryId)
       return `Ninguna propiedad en "${cat?.name || 'esta categoría'}". Pulsa "Todo el Mercado" o asigna categorías desde el detalle de cada inmueble.`
     }
     if (filter === 'hot') return 'Ninguna oportunidad TOP (score ≥ 80). Prueba el filtro TODOS.'
     if (filter === 'particular') return 'Ningún anuncio de particular con los filtros actuales.'
-    if (searchTerm.trim()) return `Sin resultados para "${searchTerm}".`
+    if (activeFilterCount > 0) return 'Ningún anuncio coincide con los filtros aplicados. Prueba a ampliar el rango de precio o limpiar filtros.'
     return null
   })()
 
@@ -123,10 +196,15 @@ function App() {
             setView={setView} 
             setFilter={setFilter} 
             setSelectedCategoryId={setSelectedCategoryId}
+            setSelectedListId={setSelectedListId}
             categories={categories}
+            lists={lists}
+            onCreateList={() => setListModal({ list: null })}
+            onEditList={(list) => setListModal({ list })}
             view={view} 
             filter={filter} 
             selectedCategoryId={selectedCategoryId}
+            selectedListId={selectedListId}
         />
       </aside>
 
@@ -157,12 +235,16 @@ function App() {
                   <div className="hidden sm:flex pl-6 text-white/30"><Search size={28} /></div>
                   <input 
                     type="text" 
-                    placeholder="Busca barrios, calles o descripción..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Busca por título, barrio o descripción..." 
+                    value={filters.title}
+                    onChange={(e) => setFilters((f) => ({ ...f, title: e.target.value }))}
                     className="w-full py-5 px-6 sm:px-4 bg-transparent outline-none text-xl font-bold text-white placeholder:text-white/20"
                   />
-                  <button className="w-full sm:w-auto bg-[#00acee] text-white px-10 py-5 rounded-[1.8rem] font-black uppercase text-xs tracking-widest hover:bg-[#009bd6] transition-all active:scale-95 shadow-xl shadow-[#00acee/20]">
+                  <button
+                    type="button"
+                    onClick={() => { setView('dashboard'); setFiltersExpanded(true); window.scrollTo({ top: 480, behavior: 'smooth' }) }}
+                    className="w-full sm:w-auto bg-[#00acee] text-white px-10 py-5 rounded-[1.8rem] font-black uppercase text-xs tracking-widest hover:bg-[#009bd6] transition-all active:scale-95 shadow-xl shadow-[#00acee/20]"
+                  >
                     Buscar
                   </button>
                </div>
@@ -210,10 +292,28 @@ function App() {
           <section className="bg-white p-6 lg:p-16 min-h-screen">
              <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-16 gap-8">
                 <div>
-                   <h2 className="text-4xl lg:text-5xl font-black text-slate-900 tracking-tight">Vigilante de Inversión</h2>
-                   <p className="text-slate-400 text-sm mt-3 font-bold uppercase tracking-[0.2em]">{filteredProperties.length} oportunidades encontradas</p>
+                   <h2 className="text-4xl lg:text-5xl font-black text-slate-900 tracking-tight">
+                     {selectedList ? selectedList.name : 'Vigilante de Inversión'}
+                   </h2>
+                   <p className="text-slate-400 text-sm mt-3 font-bold uppercase tracking-[0.2em]">
+                     {filteredProperties.length} oportunidades
+                     {selectedList ? ` en esta lista` : ' encontradas'}
+                   </p>
+                   {selectedList?.description && (
+                     <p className="text-slate-500 text-sm mt-2 max-w-xl">{selectedList.description}</p>
+                   )}
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                   {selectedList && (
+                     <>
+                       <button
+                         onClick={() => setListModal({ list: selectedList })}
+                         className="flex items-center gap-2 px-5 py-3 rounded-2xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50"
+                       >
+                         <Edit3 size={16} /> Editar lista
+                       </button>
+                     </>
+                   )}
                    <button onClick={fetchData} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-slate-400 hover:bg-white hover:shadow-xl transition-all">
                       <RefreshCw size={24} className={loading ? 'animate-spin' : ''} />
                    </button>
@@ -224,12 +324,22 @@ function App() {
                 </div>
              </div>
 
+             <PropertyFilters
+               filters={filters}
+               onChange={setFilters}
+               onReset={resetFilters}
+               cities={cityOptions}
+               activeCount={activeFilterCount}
+               expanded={filtersExpanded}
+               onToggleExpanded={() => setFiltersExpanded((v) => !v)}
+             />
+
              {emptyMessage && paginatedProperties.length === 0 && (
                 <div className={`mb-12 p-8 rounded-3xl border-2 ${errorField ? 'bg-red-50 border-red-200 text-red-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
                   <p className="font-bold text-sm leading-relaxed">{emptyMessage}</p>
-                  {(selectedCategoryId || filter !== 'all') && !errorField && (
+                  {(selectedCategoryId || filter !== 'all' || activeFilterCount > 0 || selectedListId) && !errorField && (
                     <button
-                      onClick={() => { setFilter('all'); setSelectedCategoryId(null); setSearchTerm(''); setCurrentPage(1) }}
+                      onClick={resetFilters}
                       className="mt-4 text-xs font-black uppercase tracking-widest text-[#00acee] hover:underline"
                     >
                       Ver todo el mercado
@@ -365,16 +475,48 @@ function App() {
                         <span className="text-lg font-black">{selectedIds.size} Elementos</span>
                     </div>
                     <div className="h-12 w-px bg-white/10" />
-                    <div className="flex gap-3 overflow-x-auto max-w-[400px] no-scroll-bar">
-                        {categories.map(cat => (
-                            <button 
-                                key={cat.id} onClick={() => changeBatchCategory(cat.id)}
-                                className="whitespace-nowrap px-5 py-3 rounded-2xl border border-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all"
+                    {selectedListId ? (
+                      <button
+                        onClick={removeSelectionFromList}
+                        className="whitespace-nowrap px-5 py-3 rounded-2xl border border-red-400/30 bg-red-500/10 hover:bg-red-500 text-red-300 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all"
+                      >
+                        Quitar de lista
+                      </button>
+                    ) : (
+                      <>
+                        <div className="flex gap-3 overflow-x-auto max-w-[400px] no-scroll-bar">
+                            {categories.map(cat => (
+                                <button 
+                                    key={cat.id} onClick={() => changeBatchCategory(cat.id)}
+                                    className="whitespace-nowrap px-5 py-3 rounded-2xl border border-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all"
+                                >
+                                    {cat.name}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="h-12 w-px bg-white/10" />
+                        <div className="flex gap-2 overflow-x-auto max-w-[280px] no-scroll-bar">
+                          {lists.map((list) => (
+                            <button
+                              key={list.id}
+                              onClick={() => addSelectionToList(list.id)}
+                              style={{ borderColor: `${list.color}55` }}
+                              className="whitespace-nowrap px-4 py-3 rounded-2xl border hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all"
                             >
-                                {cat.name}
+                              + {list.name}
                             </button>
-                        ))}
-                    </div>
+                          ))}
+                          {lists.length === 0 && (
+                            <button
+                              onClick={() => setListModal({ list: null })}
+                              className="whitespace-nowrap px-4 py-3 rounded-2xl border border-white/10 text-[10px] font-black uppercase tracking-widest"
+                            >
+                              Crear lista
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
                     <div className="h-12 w-px bg-white/10" />
                     <button onClick={deleteBatch} className="p-4 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all"><Trash2 size={24} /></button>
                 </motion.div>
@@ -386,9 +528,23 @@ function App() {
             <PropertyIntelligenceModal 
                 property={selectedProperty} 
                 categories={categories}
+                lists={lists}
                 onClose={() => setSelectedProperty(null)} 
                 onUpdate={updateProperty}
                 onDelete={deleteProperty}
+                onAddToList={addPropertyToList}
+                onRemoveFromList={removePropertyFromList}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {listModal && (
+            <ListEditModal
+              list={listModal.list}
+              onClose={() => setListModal(null)}
+              onSave={saveList}
+              onDelete={deleteList}
             />
           )}
         </AnimatePresence>
@@ -398,11 +554,26 @@ function App() {
   )
 }
 
-function SidebarContent({ setView, setFilter, setSelectedCategoryId, categories, view, filter, selectedCategoryId }) {
-  const handleClick = (v, f, catId) => {
-    setView(v)
-    if (f !== undefined) setFilter(f)
-    if (catId !== undefined) setSelectedCategoryId(catId)
+function SidebarContent({ setView, setFilter, setSelectedCategoryId, setSelectedListId, categories, lists, onCreateList, onEditList, view, filter, selectedCategoryId, selectedListId }) {
+  const handleMarket = () => {
+    setView('dashboard')
+    setFilter('all')
+    setSelectedCategoryId(null)
+    setSelectedListId(null)
+  }
+
+  const handleCategory = (catId) => {
+    setView('dashboard')
+    setFilter('all')
+    setSelectedCategoryId(catId)
+    setSelectedListId(null)
+  }
+
+  const handleList = (listId) => {
+    setView('dashboard')
+    setFilter('all')
+    setSelectedCategoryId(null)
+    setSelectedListId(listId)
   }
 
   return (
@@ -418,12 +589,52 @@ function SidebarContent({ setView, setFilter, setSelectedCategoryId, categories,
         <p className="text-[#00acee] text-[9px] font-black mt-3 uppercase tracking-[0.4em] opacity-60">Real Estate Intelligence</p>
       </div>
 
-      <nav className="flex-1 px-8 mt-12 space-y-3">
+      <nav className="flex-1 px-8 mt-12 space-y-3 overflow-y-auto">
         <p className="px-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-4">Radar Principal</p>
-        <SidebarNavItem active={view === 'dashboard' && !selectedCategoryId} icon={<LayoutGrid size={22} />} label="Todo el Mercado" onClick={() => handleClick('dashboard', 'all', null)} />
-        <SidebarNavItem active={view === 'settings'} icon={<SettingsIcon size={22} />} label="Configuración" onClick={() => handleClick('settings')} />
+        <SidebarNavItem active={view === 'dashboard' && !selectedCategoryId && !selectedListId} icon={<LayoutGrid size={22} />} label="Todo el Mercado" onClick={handleMarket} />
+        <SidebarNavItem active={view === 'settings'} icon={<SettingsIcon size={22} />} label="Configuración" onClick={() => setView('settings')} />
         
         <div className="py-10 px-6"><div className="h-px bg-white/5 w-full" /></div>
+
+        <div className="flex items-center justify-between px-6 mb-4">
+          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Mis Listas</p>
+          <button
+            onClick={onCreateList}
+            className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-all"
+            title="Nueva lista"
+          >
+            <ListPlus size={18} />
+          </button>
+        </div>
+        <div className="space-y-2 mb-6">
+          {lists.length === 0 ? (
+            <button
+              onClick={onCreateList}
+              className="w-full px-6 py-3 rounded-2xl border border-dashed border-white/10 text-white/30 text-[10px] font-black uppercase tracking-widest hover:border-white/20 hover:text-white/50 transition-all"
+            >
+              + Crear primera lista
+            </button>
+          ) : (
+            lists.map((list) => (
+              <div key={list.id} className="flex items-center gap-1 group">
+                <SidebarNavItem
+                  active={selectedListId === list.id}
+                  icon={<Bookmark size={20} style={{ color: list.color }} />}
+                  label={`${list.name} (${list.property_count})`}
+                  onClick={() => handleList(list.id)}
+                  className="flex-1 min-w-0"
+                />
+                <button
+                  onClick={() => onEditList(list)}
+                  className="p-2 rounded-xl text-white/20 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                  title="Editar lista"
+                >
+                  <Edit3 size={14} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
 
         <p className="px-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-4">Mi Cartera</p>
         <div className="space-y-2">
@@ -433,7 +644,7 @@ function SidebarContent({ setView, setFilter, setSelectedCategoryId, categories,
                     active={selectedCategoryId === cat.id} 
                     icon={<Tag size={20} style={{ color: cat.color }} />} 
                     label={cat.name} 
-                    onClick={() => handleClick('dashboard', 'all', cat.id)} 
+                    onClick={() => handleCategory(cat.id)} 
                 />
             ))}
         </div>
@@ -448,14 +659,14 @@ function SidebarContent({ setView, setFilter, setSelectedCategoryId, categories,
   )
 }
 
-function SidebarNavItem({ active, icon, label, onClick }) {
+function SidebarNavItem({ active, icon, label, onClick, className = '' }) {
   return (
     <button 
       onClick={onClick}
-      className={`w-full flex items-center gap-5 px-6 py-4 rounded-2xl transition-all duration-500 ${active ? 'bg-gradient-to-r from-[#00acee] to-[#4f46e5] text-white shadow-2xl shadow-[#00acee/40]' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+      className={`w-full flex items-center gap-5 px-6 py-4 rounded-2xl transition-all duration-500 ${active ? 'bg-gradient-to-r from-[#00acee] to-[#4f46e5] text-white shadow-2xl shadow-[#00acee/40]' : 'text-white/40 hover:text-white hover:bg-white/5'} ${className}`}
     >
-      <span className={active ? 'text-white' : 'text-white/20'}>{icon}</span>
-      <span className="text-xs font-black uppercase tracking-widest">{label}</span>
+      <span className={`shrink-0 ${active ? 'text-white' : 'text-white/20'}`}>{icon}</span>
+      <span className="text-xs font-black uppercase tracking-widest truncate text-left">{label}</span>
     </button>
   )
 }

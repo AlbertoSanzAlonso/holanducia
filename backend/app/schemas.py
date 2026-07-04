@@ -211,3 +211,32 @@ class DatabaseStatsResponse(BaseModel):
     without_embedding: int
     stale_7d: int
     last_sync: Optional[dict] = None
+
+
+class PropertyListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: Optional[str] = None
+    color: str
+    property_ids: List[int] = Field(default_factory=list)
+    property_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class PropertyListCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = None
+    color: str = "#6366f1"
+
+
+class PropertyListUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = None
+    color: Optional[str] = None
+
+
+class ListPropertiesRequest(BaseModel):
+    property_ids: List[int] = Field(default_factory=list)

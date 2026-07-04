@@ -33,4 +33,12 @@ export const api = {
   createScrapingRequest: (data) => request('/api/scraping-requests', { method: 'POST', body: JSON.stringify(data) }),
   getLatestScrapingRequest: () => request('/api/scraping-requests/latest'),
   getDatabaseStats: () => request('/api/sync/stats'),
+  getLists: () => request('/api/lists'),
+  createList: (data) => request('/api/lists', { method: 'POST', body: JSON.stringify(data) }),
+  updateList: (id, data) => request(`/api/lists/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteList: (id) => request(`/api/lists/${id}`, { method: 'DELETE' }),
+  addToList: (listId, propertyIds) =>
+    request(`/api/lists/${listId}/properties`, { method: 'POST', body: JSON.stringify({ property_ids: propertyIds }) }),
+  removeFromList: (listId, propertyIds) =>
+    request(`/api/lists/${listId}/properties/remove`, { method: 'POST', body: JSON.stringify({ property_ids: propertyIds }) }),
 }

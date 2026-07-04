@@ -91,3 +91,30 @@ class ScrapingRequest(Base):
     target_leads: Mapped[Optional[int]] = mapped_column(Integer)
     groups: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
     portal_urls: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
+
+
+class PropertyList(Base):
+    __tablename__ = "property_lists"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    color: Mapped[str] = mapped_column(String(20), default="#6366f1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    items: Mapped[List["PropertyListItem"]] = relationship(
+        "PropertyListItem", back_populates="list", cascade="all, delete-orphan"
+    )
+
+
+class PropertyListItem(Base):
+    __tablename__ = "property_list_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    list_id: Mapped[int] = mapped_column(ForeignKey("property_lists.id", ondelete="CASCADE"), nullable=False)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    list: Mapped["PropertyList"] = relationship("PropertyList", back_populates="items")

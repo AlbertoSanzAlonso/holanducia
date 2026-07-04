@@ -10,13 +10,17 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.database import get_db
-from backend.app.models import Category, Property, ScrapingRequest, UserSettings
+from backend.app.models import Category, Property, PropertyList, PropertyListItem, ScrapingRequest, UserSettings
 from backend.app.schemas import (
     BatchCategoryRequest,
     BatchDeleteRequest,
     CategoryOut,
     EmbedBackfillResponse,
+    ListPropertiesRequest,
     PropertyCreate,
+    PropertyListCreate,
+    PropertyListOut,
+    PropertyListUpdate,
     PropertyOut,
     PropertyUpdate,
     ScrapingRequestCreate,
@@ -63,6 +67,21 @@ def apply_opportunity_score(data: dict) -> dict:
 
 def property_to_dict(prop: Property) -> dict:
     return {field: getattr(prop, field) for field in PROPERTY_FIELDS | {"id", "created_at", "updated_at"}}
+
+
+def list_to_out(plist: PropertyList) -> PropertyListOut:
+    items = plist.items if getattr(plist, "items", None) is not None else []
+    property_ids = [item.property_id for item in items]
+    return PropertyListOut(
+        id=plist.id,
+        name=plist.name,
+        description=plist.description,
+        color=plist.color,
+        property_ids=property_ids,
+        property_count=len(property_ids),
+        created_at=plist.created_at,
+        updated_at=plist.updated_at,
+    )
 
 
 @router.get("/media/properties/{filename}")
@@ -329,3 +348,147 @@ async def update_scraping_request(
     await db.commit()
     await db.refresh(req)
     return req
+
+
+@router.get("/lists", response_model=List[PropertyListOut])
+async def list_property_lists(db: AsyncSession = Depends(get_db)):
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(PropertyList).options(selectinload(PropertyList.items)).order_by(PropertyList.updated_at.desc())
+    )
+    return [list_to_out(plist) for plist in result.scalars().all()]
+
+
+@router.post("/lists", response_model=PropertyListOut, status_code=201)
+async def create_property_list(payload: PropertyListCreate, db: AsyncSession = Depends(get_db)):
+    now = datetime.now(timezone.utc)
+    plist = PropertyList(**payload.model_dump(), updated_at=now)
+    db.add(plist)
+    await db.commit()
+    await db.refresh(plist)
+    return PropertyListOut(
+        id=plist.id,
+        name=plist.name,
+        description=plist.description,
+        color=plist.color,
+        property_ids=[],
+        property_count=0,
+        created_at=plist.created_at,
+        updated_at=plist.updated_at,
+    )
+
+
+@router.get("/lists/{list_id}", response_model=PropertyListOut)
+async def get_property_list(list_id: int, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(PropertyList).options(selectinload(PropertyList.items)).where(PropertyList.id == list_id)
+    )
+    plist = result.scalar_one_or_none()
+    if not plist:
+        raise HTTPException(status_code=404, detail="List not found")
+    return list_to_out(plist)
+
+
+@router.patch("/lists/{list_id}", response_model=PropertyListOut)
+async def update_property_list(
+    list_id: int,
+    payload: PropertyListUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(PropertyList).options(selectinload(PropertyList.items)).where(PropertyList.id == list_id)
+    )
+    plist = result.scalar_one_or_none()
+    if not plist:
+        raise HTTPException(status_code=404, detail="List not found")
+
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(plist, key, value)
+    plist.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(plist)
+    return list_to_out(plist)
+
+
+@router.delete("/lists/{list_id}", status_code=204)
+async def delete_property_list(list_id: int, db: AsyncSession = Depends(get_db)):
+    plist = await db.get(PropertyList, list_id)
+    if not plist:
+        raise HTTPException(status_code=404, detail="List not found")
+    await db.delete(plist)
+    await db.commit()
+
+
+@router.post("/lists/{list_id}/properties", response_model=PropertyListOut)
+async def add_properties_to_list(
+    list_id: int,
+    payload: ListPropertiesRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy.orm import selectinload
+
+    if not payload.property_ids:
+        raise HTTPException(status_code=400, detail="property_ids required")
+
+    result = await db.execute(
+        select(PropertyList).options(selectinload(PropertyList.items)).where(PropertyList.id == list_id)
+    )
+    plist = result.scalar_one_or_none()
+    if not plist:
+        raise HTTPException(status_code=404, detail="List not found")
+
+    existing = {item.property_id for item in plist.items}
+    for prop_id in payload.property_ids:
+        if prop_id in existing:
+            continue
+        prop = await db.get(Property, prop_id)
+        if not prop:
+            continue
+        db.add(PropertyListItem(list_id=list_id, property_id=prop_id))
+        existing.add(prop_id)
+
+    plist.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    result = await db.execute(
+        select(PropertyList).options(selectinload(PropertyList.items)).where(PropertyList.id == list_id)
+    )
+    return list_to_out(result.scalar_one())
+
+
+@router.post("/lists/{list_id}/properties/remove", response_model=PropertyListOut)
+async def remove_properties_from_list(
+    list_id: int,
+    payload: ListPropertiesRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy.orm import selectinload
+
+    if not payload.property_ids:
+        raise HTTPException(status_code=400, detail="property_ids required")
+
+    await db.execute(
+        delete(PropertyListItem).where(
+            PropertyListItem.list_id == list_id,
+            PropertyListItem.property_id.in_(payload.property_ids),
+        )
+    )
+
+    plist = await db.get(PropertyList, list_id)
+    if plist:
+        plist.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    result = await db.execute(
+        select(PropertyList).options(selectinload(PropertyList.items)).where(PropertyList.id == list_id)
+    )
+    plist = result.scalar_one_or_none()
+    if not plist:
+        raise HTTPException(status_code=404, detail="List not found")
+    return list_to_out(plist)

@@ -3,11 +3,11 @@ import { motion } from 'framer-motion';
 import { 
   X, ShieldCheck, AlertTriangle, Home, Calendar, Maximize2, 
   ExternalLink, Map as MapIcon, TrendingDown, Building2,
-  Trash2, Edit3, Save, RotateCcw
+  Trash2, Edit3, Save, RotateCcw, Bookmark, Plus
 } from 'lucide-react';
 import { formatPrice, getListingUrl, resolveImageUrl, hasPropertyImage } from './utils/propertyDisplay';
 
-const PropertyIntelligenceModal = ({ property: initialProperty, categories, onClose, onUpdate, onDelete }) => {
+const PropertyIntelligenceModal = ({ property: initialProperty, categories, lists = [], onClose, onUpdate, onDelete, onAddToList, onRemoveFromList }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [property, setProperty] = useState(initialProperty);
   const [saving, setSaving] = useState(false);
@@ -286,6 +286,42 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, onCl
                 })}
              </div>
           </div>
+
+          {/* Custom lists */}
+          {lists.length > 0 && onAddToList && (
+            <div className="mb-12 p-8 bg-slate-50/50 rounded-[2.5rem] border border-slate-100">
+              <h4 className="text-slate-900 font-black text-xs uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+                <Bookmark size={16} className="text-[#00acee]" />
+                Mis listas personalizadas
+              </h4>
+              <div className="flex flex-wrap gap-3">
+                {lists.map((list) => {
+                  const inList = list.property_ids?.includes(property.id);
+                  return (
+                    <button
+                      key={list.id}
+                      onClick={async () => {
+                        if (inList) {
+                          await onRemoveFromList(list.id, property.id);
+                        } else {
+                          await onAddToList(list.id, property.id);
+                        }
+                      }}
+                      style={{
+                        backgroundColor: inList ? list.color : 'white',
+                        borderColor: inList ? list.color : '#f1f5f9',
+                        color: inList ? 'white' : '#94a3b8',
+                      }}
+                      className="px-5 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border-2 shadow-sm hover:scale-105 active:scale-95 flex items-center gap-2"
+                    >
+                      {inList ? <Bookmark size={12} /> : <Plus size={12} />}
+                      {list.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Description Section was already above, removing the duplicated broken one */}
           
