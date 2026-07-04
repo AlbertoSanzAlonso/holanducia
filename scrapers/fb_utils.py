@@ -43,7 +43,7 @@ NON_LISTING_HINTS = (
 
 
 def is_property_listing_text(text: str) -> bool:
-    """Filtro estricto: tipo de inmueble + intención de anuncio."""
+    """Filtro relajado: tipo de inmueble O intención de anuncio."""
     lower = (text or "").lower()
     if len(lower) < 50:
         return False
@@ -61,9 +61,7 @@ def is_property_listing_text(text: str) -> bool:
     has_intent = any(i in lower for i in LISTING_INTENTS)
     has_price = bool(extract_price_from_text(text))
 
-    if not has_type:
-        return False
-    if not has_intent and not has_price:
+    if not has_type and not has_intent and not has_price:
         return False
     return True
 
