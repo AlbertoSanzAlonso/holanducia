@@ -33,6 +33,7 @@ export const api = {
   createScrapingRequest: (data) => request('/api/scraping-requests', { method: 'POST', body: JSON.stringify(data) }),
   listScrapingRequests: (status = '') => request(`/api/scraping-requests?limit=20${status ? `&status=${status}` : ''}`),
   cancelScrapingRequest: (id) => request(`/api/scraping-requests/${id}`, { method: 'DELETE' }),
+  cancelAllPending: () => request('/api/scraping-requests/cancel-all-pending', { method: 'POST' }),
   getLatestScrapingRequest: () => request('/api/scraping-requests/latest'),
   getDatabaseStats: () => request('/api/sync/stats'),
   embedBackfill: (limit = 500) =>

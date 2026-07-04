@@ -170,7 +170,18 @@ export default function SettingsView() {
     }
   }
 
-  const cancelJob = async (id) => {
+  const cancelAll = async () => {
+    try {
+      const res = await api.cancelAllPending()
+      setNotification(`${res.cancelled} misiones canceladas`)
+      setTimeout(() => setNotification(null), 4000)
+    } catch {
+      setNotification('Error al cancelar misiones')
+      setTimeout(() => setNotification(null), 4000)
+    }
+    fetchJobs()
+    refreshStats()
+  }
     try {
       await api.cancelScrapingRequest(id)
     } catch {
@@ -446,15 +457,25 @@ export default function SettingsView() {
               </div>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Misiones de scraping</p>
             </div>
-            <button
-              type="button"
-              onClick={fetchJobs}
-              disabled={jobsLoading}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-white transition-all"
-            >
-              <RefreshCw size={14} className={jobsLoading ? 'animate-spin' : ''} />
-              Actualizar
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={cancelAll}
+                className="flex items-center gap-1 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-[10px] font-black uppercase tracking-widest text-red-500 transition-all"
+              >
+                <Square size={12} />
+                Cancelar todas
+              </button>
+              <button
+                type="button"
+                onClick={fetchJobs}
+                disabled={jobsLoading}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-white transition-all"
+              >
+                <RefreshCw size={14} className={jobsLoading ? 'animate-spin' : ''} />
+                Actualizar
+              </button>
+            </div>
           </div>
 
           {jobs.length === 0 ? (

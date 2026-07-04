@@ -409,6 +409,23 @@ async def cancel_scraping_request(
     return {"ok": True, "message": f"Misión {request_id} cancelada"}
 
 
+@router.post("/scraping-requests/cancel-all-pending")
+async def cancel_all_pending(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ScrapingRequest).where(ScrapingRequest.status.in_(["pending", "processing"]))
+    )
+    requests = result.scalars().all()
+    now = datetime.now(timezone.utc)
+    cancelled = 0
+    for req in requests:
+        req.status = "cancelled"
+        req.processed_at = now
+        req.error_message = "Cancelado por el usuario"
+        cancelled += 1
+    await db.commit()
+    return {"ok": True, "cancelled": cancelled}
+
+
 @router.get("/lists", response_model=List[PropertyListOut])
 async def list_property_lists(db: AsyncSession = Depends(get_db)):
     from sqlalchemy.orm import selectinload
