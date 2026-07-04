@@ -32,12 +32,30 @@ EXPAND_POSTS_JS = """() => {
 
 EXTRACT_FB_ASSETS_JS = r"""() => {
     const postUrls = new Set();
-    const urlPatterns = ['/posts/', '/permalink/', 'story_fbid', 'multi_permalinks', '/photo/', 'fbid='];
+    // Patrones más amplios para capturar URLs de posts
+    const urlPatterns = ['/posts/', '/permalink/', 'story_fbid', 'multi_permalinks', '/photo/', '/photos/', 'fbid=', '/videos/'];
     document.querySelectorAll('a[href]').forEach(a => {
         try {
-            const u = new URL(a.getAttribute('href'), location.href);
+            const href = a.getAttribute('href');
+            if (!href) return;
+            const u = new URL(href, location.href);
             if (u.hostname.includes('facebook.com') && urlPatterns.some(p => u.href.toLowerCase().includes(p))) {
-                postUrls.add(u.href.split('#')[0].split('?')[0].replace(/\/$/, ''));
+                // Limpiar la URL
+                let cleanUrl = u.href.split('#')[0].split('?')[0].replace(/\/$/, '');
+                postUrls.add(cleanUrl);
+            }
+        } catch(e) {}
+    });
+
+    // También buscar enlaces de tiempo (suelen ser enlaces al post)
+    document.querySelectorAll('a[aria-label*="hace"], a[aria-label*="ago"], a[aria-label*="Published"], a[aria-label*="Posted"], a[aria-label*="Publicado"]').forEach(a => {
+        try {
+            const href = a.getAttribute('href');
+            if (!href) return;
+            const u = new URL(href, location.href);
+            if (u.hostname.includes('facebook.com')) {
+                let cleanUrl = u.href.split('#')[0].split('?')[0].replace(/\/$/, '');
+                postUrls.add(cleanUrl);
             }
         } catch(e) {}
     });
@@ -91,49 +109,56 @@ EXTRACT_POSTS_JS = """() => {
         const h = (href || '').toLowerCase();
         return h.includes('/posts/') || h.includes('/permalink/') || 
                h.includes('story_fbid') || h.includes('multi_permalinks') ||
-               h.includes('/photos/') || h.includes('/videos/');
+               h.includes('/photos/') || h.includes('/videos/') || h.includes('fbid=');
     }
 
-    // Primero, encontrar todos los enlaces de posts en la página
-    const postLinks = [];
-    document.querySelectorAll('a[href]').forEach(a => {
-        const href = a.getAttribute('href');
-        if (isPostUrl(href)) {
-            const url = absUrl(href);
-            if (url && !postLinks.includes(url)) {
-                postLinks.push(url);
+    function extractPostUrl(el) {
+        // Buscar enlaces de tiempo (más fiables para posts)
+        const timeSelectors = [
+            'a[aria-label*="hace"]', 'a[aria-label*="ago"]', 
+            'a[aria-label*="Published"]', 'a[aria-label*="Posted"]',
+            'a[aria-label*="Publicado"]', 'a[aria-label*="Hace"]',
+            'abbr[data-utime]', 'a[data-utime]'
+        ];
+        for (const sel of timeSelectors) {
+            const timeEl = el.querySelector(sel);
+            if (timeEl) {
+                const url = absUrl(timeEl.getAttribute('href'));
+                if (url) return url;
             }
         }
-    });
-
-    // Para cada enlace de post, extraer el texto del post
-    postLinks.forEach(postUrl => {
-        // Buscar el elemento que contiene este enlace
-        const linkEl = document.querySelector(`a[href*="${postUrl.split('/').pop()}"]`);
-        if (!linkEl) return;
-
-        // Subir hasta encontrar el contenedor del post completo
-        let postContainer = linkEl;
-        for (let i = 0; i < 10; i++) {
-            if (!postContainer.parentElement) break;
-            postContainer = postContainer.parentElement;
-            const text = (postContainer.innerText || '').trim();
-            // Si el texto es suficientemente largo, es probablemente el post completo
-            if (text.length >= 100) break;
+        
+        // Buscar cualquier enlace que parezca ser del post
+        const postPatterns = ['/posts/', '/permalink/', '/photos/', '/videos/', 'story_fbid', 'multi_permalinks', 'fbid='];
+        for (const a of el.querySelectorAll('a[href]')) {
+            const href = (a.getAttribute('href') || '').toLowerCase();
+            if (postPatterns.some(p => href.includes(p))) {
+                const url = absUrl(a.getAttribute('href'));
+                if (url) return url;
+            }
         }
+        
+        // Buscar enlaces del grupo que contengan el ID del post
+        for (const a of el.querySelectorAll('a[href*="/groups/"]')) {
+            const href = (a.getAttribute('href') || '').toLowerCase();
+            if (href.includes('/posts/') || href.includes('permalink') || href.includes('multi_permalinks')) {
+                const url = absUrl(a.getAttribute('href'));
+                if (url) return url;
+            }
+        }
+        
+        return '';
+    }
 
-        const text = (postContainer.innerText || '').trim();
-        if (text.length < 40) return;
-
-        // Extraer imágenes del contenedor
+    function extractImages(el) {
         const imgs = [];
-        postContainer.querySelectorAll('img').forEach(img => {
+        el.querySelectorAll('img').forEach(img => {
             const w = img.naturalWidth || img.width || 0;
             const h = img.naturalHeight || img.height || 0;
             if (w > 0 && w < 100 && h > 0 && h < 100) return;
             let src = '';
             if (img.srcset) {
-                const parts = img.srcset.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+                const parts = img.srcset.split(',').map(s => s.trim().split(/\\s+/)[0]).filter(Boolean);
                 src = parts[parts.length - 1] || img.src || '';
             } else {
                 src = img.src || img.getAttribute('data-src') || '';
@@ -145,56 +170,47 @@ EXTRACT_POSTS_JS = """() => {
             if (lower.includes('profile') || lower.includes('safe_image') || lower.includes('avatar')) return;
             imgs.push(src.split('&')[0]);
         });
+        el.querySelectorAll('[style*="background-image"]').forEach(bgEl => {
+            const m = (bgEl.getAttribute('style') || '').match(/url\\(["']?(https:[^"')]+)/i);
+            if (m && m[1].includes('scontent')) {
+                imgs.push(m[1].split('&')[0]);
+            }
+        });
+        return [...new Set(imgs)];
+    }
 
-        const key = postUrl;
+    // Extraer posts de artículos
+    const articles = document.querySelectorAll('div[role="article"], article');
+    articles.forEach(el => {
+        const text = (el.innerText || '').trim();
+        if (text.length < 40) return;
+        
+        const url = extractPostUrl(el);
+        const images = extractImages(el);
+        
+        const key = url || text.slice(0, 150);
         if (seen.has(key)) return;
         seen.add(key);
-        posts.push({ text, url: postUrl, images: [...new Set(imgs)] });
+        posts.push({ text, url, images });
     });
 
-    // Fallback: si no se encontraron posts con URLs, extraer de artículos
+    // Fallback: si no se encontraron artículos, buscar en el feed
     if (posts.length === 0) {
-        const articles = document.querySelectorAll('div[role="article"], article');
-        articles.forEach(el => {
-            const text = (el.innerText || '').trim();
-            if (text.length < 40) return;
-            
-            // Buscar URL en el artículo
-            let url = '';
-            for (const a of el.querySelectorAll('a[href]')) {
-                const href = a.getAttribute('href');
-                if (isPostUrl(href)) {
-                    url = absUrl(href);
-                    if (url) break;
-                }
-            }
-
-            // Extraer imágenes
-            const imgs = [];
-            el.querySelectorAll('img').forEach(img => {
-                const w = img.naturalWidth || img.width || 0;
-                const h = img.naturalHeight || img.height || 0;
-                if (w > 0 && w < 100 && h > 0 && h < 100) return;
-                let src = '';
-                if (img.srcset) {
-                    const parts = img.srcset.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
-                    src = parts[parts.length - 1] || img.src || '';
-                } else {
-                    src = img.src || img.getAttribute('data-src') || '';
-                }
-                if (!src) return;
-                const lower = src.toLowerCase();
-                if (!lower.includes('scontent') && !lower.includes('fbcdn')) return;
-                if (lower.includes('emoji') || lower.includes('static.xx') || lower.includes('rsrc.php')) return;
-                if (lower.includes('profile') || lower.includes('safe_image') || lower.includes('avatar')) return;
-                imgs.push(src.split('&')[0]);
+        const feed = document.querySelector('[role="main"], [role="feed"], #scrollview');
+        if (feed) {
+            feed.querySelectorAll('div[dir="auto"]').forEach(el => {
+                const text = (el.innerText || '').trim();
+                if (text.length < 80) return;
+                
+                const url = extractPostUrl(el);
+                const images = extractImages(el);
+                
+                const key = url || text.slice(0, 150);
+                if (seen.has(key)) return;
+                seen.add(key);
+                posts.push({ text, url, images });
             });
-
-            const key = url || text.slice(0, 150);
-            if (seen.has(key)) return;
-            seen.add(key);
-            posts.push({ text, url, images: [...new Set(imgs)] });
-        });
+        }
     }
 
     return posts;
