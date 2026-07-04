@@ -6,7 +6,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.database import get_db
@@ -235,9 +235,33 @@ async def embed_property(property_id: int, db: AsyncSession = Depends(get_db)):
 async def embed_backfill(limit: int = 100, db: AsyncSession = Depends(get_db)):
     service = VectorService(db)
     if not service.embedder.available:
-        return EmbedBackfillResponse(embedded=0, available=False)
-    embedded = await service.backfill_missing(limit=min(limit, 500))
-    return EmbedBackfillResponse(embedded=embedded, available=True)
+        return EmbedBackfillResponse(
+            embedded=0,
+            available=False,
+            remaining=0,
+            message="OPENAI_API_KEY no configurada en el servicio API. Añádela en Coolify → api → Variables.",
+        )
+
+    try:
+        embedded = await service.backfill_missing(limit=min(limit, 500))
+        remaining = await db.scalar(
+            text(
+                """
+                SELECT COUNT(*) FROM properties p
+                LEFT JOIN property_embeddings pe ON pe.property_id = p.id
+                WHERE p.is_active = TRUE AND pe.id IS NULL
+                """
+            )
+        ) or 0
+        return EmbedBackfillResponse(
+            embedded=embedded,
+            available=True,
+            remaining=int(remaining),
+            message=f"{embedded} propiedades vectorizadas" if embedded else "Nada que vectorizar en este lote",
+        )
+    except Exception as e:
+        logger.exception("embed_backfill falló")
+        raise HTTPException(status_code=502, detail=f"Error generando embeddings: {e}") from e
 
 
 @router.get("/sync/stats", response_model=DatabaseStatsResponse)

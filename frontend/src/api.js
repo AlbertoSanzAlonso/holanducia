@@ -33,6 +33,8 @@ export const api = {
   createScrapingRequest: (data) => request('/api/scraping-requests', { method: 'POST', body: JSON.stringify(data) }),
   getLatestScrapingRequest: () => request('/api/scraping-requests/latest'),
   getDatabaseStats: () => request('/api/sync/stats'),
+  embedBackfill: (limit = 500) =>
+    request(`/api/properties/embed-backfill?limit=${limit}`, { method: 'POST' }),
   getLists: () => request('/api/lists'),
   createList: (data) => request('/api/lists', { method: 'POST', body: JSON.stringify(data) }),
   updateList: (id, data) => request(`/api/lists/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),

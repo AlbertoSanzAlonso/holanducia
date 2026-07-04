@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, RefreshCw, Plus, X, Globe, Settings2 } from 'lucide-react'
+import { Save, RefreshCw, Plus, X, Globe, Settings2, Database, Sparkles, AlertTriangle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from './api'
 
@@ -16,6 +16,8 @@ export default function SettingsView() {
     facebook_groups: []
   })
   const [dbStats, setDbStats] = useState(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [embeddingBusy, setEmbeddingBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showFBModal, setShowFBModal] = useState(false)
@@ -25,8 +27,20 @@ export default function SettingsView() {
 
   useEffect(() => {
     fetchSettings()
-    api.getDatabaseStats().then(setDbStats).catch(() => {})
+    refreshStats()
   }, [])
+
+  const refreshStats = async () => {
+    setStatsLoading(true)
+    try {
+      const stats = await api.getDatabaseStats()
+      setDbStats(stats)
+    } catch {
+      setDbStats(null)
+    } finally {
+      setStatsLoading(false)
+    }
+  }
 
   const fetchSettings = async () => {
     setLoading(true)
@@ -104,6 +118,40 @@ export default function SettingsView() {
     )
     setTimeout(() => setNotification(null), 6000)
     setSaving(false)
+    refreshStats()
+  }
+
+  const handleEmbedSync = async () => {
+    setEmbeddingBusy(true)
+    try {
+      let total = 0
+      let remaining = 1
+      let rounds = 0
+      while (remaining > 0 && rounds < 10) {
+        const res = await api.embedBackfill(500)
+        if (!res?.available) {
+          setNotification(res?.message || 'Vectorial no disponible — configura OPENAI_API_KEY en el servicio API.')
+          setTimeout(() => setNotification(null), 8000)
+          break
+        }
+        total += res.embedded || 0
+        remaining = res.remaining ?? 0
+        rounds += 1
+        if ((res.embedded || 0) === 0) break
+      }
+      await refreshStats()
+      setNotification(
+        total > 0
+          ? `✓ ${total} propiedades sincronizadas con la BD vectorial${remaining > 0 ? ` · quedan ${remaining}` : ''}`
+          : 'Todas las propiedades activas ya tienen vector'
+      )
+      setTimeout(() => setNotification(null), 7000)
+    } catch (e) {
+      setNotification('Error al vectorizar: ' + (e.message || 'revisa OPENAI_API_KEY en la API'))
+      setTimeout(() => setNotification(null), 8000)
+    } finally {
+      setEmbeddingBusy(false)
+    }
   }
 
   if (loading) return <div className="p-12 text-slate-400 font-medium italic">Sincronizando sistemas...</div>
@@ -233,21 +281,82 @@ export default function SettingsView() {
         </div>
 
         {dbStats && (
-          <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estado de la base de datos</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+          <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-[#0f172a] text-white">
+                  <Database size={18} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estado de la base de datos</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Vector: {dbStats.total_embedded ?? 0} indexadas
+                    {dbStats.embedding_model ? ` · ${dbStats.embedding_model}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={refreshStats}
+                disabled={statsLoading}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-white transition-all"
+              >
+                <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} />
+                Actualizar
+              </button>
+            </div>
+
+            {!dbStats.embedding_available && (
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                <p className="text-xs font-semibold leading-relaxed">
+                  La BD vectorial está desactivada: falta <code className="text-[10px] bg-amber-100 px-1 rounded">OPENAI_API_KEY</code> en el contenedor <strong>api</strong> (Coolify). Sin ella no hay deduplicación semántica ni búsqueda por similitud.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center">
               <div><p className="text-2xl font-black text-slate-900">{dbStats.total_active}</p><p className="text-[10px] text-slate-400 uppercase">Activos</p></div>
               <div><p className="text-2xl font-black text-slate-400">{dbStats.total_inactive}</p><p className="text-[10px] text-slate-400 uppercase">Bajas</p></div>
-              <div><p className="text-2xl font-black text-amber-600">{dbStats.stale_7d}</p><p className="text-[10px] text-slate-400 uppercase">Sin ver 7d</p></div>
+              <div><p className="text-2xl font-black text-emerald-600">{dbStats.total_embedded ?? 0}</p><p className="text-[10px] text-slate-400 uppercase">Con vector</p></div>
               <div><p className="text-2xl font-black text-blue-600">{dbStats.without_embedding}</p><p className="text-[10px] text-slate-400 uppercase">Sin vector</p></div>
+              <div><p className="text-2xl font-black text-amber-600">{dbStats.stale_7d}</p><p className="text-[10px] text-slate-400 uppercase">Sin ver 7d</p></div>
             </div>
+
+            {dbStats.sync_in_progress && (
+              <p className="text-xs font-bold text-[#00acee]">
+                Sync en curso (#{dbStats.sync_in_progress.id}) desde {new Date(dbStats.sync_in_progress.started_at).toLocaleString('es-ES')}
+              </p>
+            )}
+
             {dbStats.last_sync?.stats && (
               <p className="text-xs text-slate-500">
-                Último sync: +{dbStats.last_sync.stats.created || 0} creados · 
-                {dbStats.last_sync.stats.updated || 0} actualizados · 
+                Último sync completado: +{dbStats.last_sync.stats.created || 0} creados ·{' '}
+                {dbStats.last_sync.stats.updated || 0} actualizados ·{' '}
                 {dbStats.last_sync.stats.deactivated || 0} bajas
               </p>
             )}
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleEmbedSync}
+                disabled={embeddingBusy || !dbStats.embedding_available}
+                className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-40"
+              >
+                <Sparkles size={16} className={embeddingBusy ? 'animate-pulse' : ''} />
+                {embeddingBusy ? 'Vectorizando…' : 'Sincronizar BD vectorial'}
+              </button>
+              <button
+                type="button"
+                onClick={handleMassScrape}
+                disabled={saving}
+                className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-[#0f172a] hover:bg-black text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={saving ? 'animate-spin' : ''} />
+                Scraping masivo
+              </button>
+            </div>
           </div>
         )}
 

@@ -168,9 +168,32 @@ class SimilarPropertyMatch(BaseModel):
     similarity: float
 
 
+class PropertyStatsBySource(BaseModel):
+    source: str
+    active: int
+    inactive: int
+    total: int
+
+
+class DatabaseStatsResponse(BaseModel):
+    total_active: int
+    total_inactive: int
+    total: int
+    by_source: List[PropertyStatsBySource]
+    without_embedding: int
+    total_embedded: int = 0
+    embedding_available: bool = False
+    embedding_model: str = "text-embedding-3-small"
+    stale_7d: int
+    last_sync: Optional[dict] = None
+    sync_in_progress: Optional[dict] = None
+
+
 class EmbedBackfillResponse(BaseModel):
     embedded: int
     available: bool
+    remaining: int = 0
+    message: Optional[str] = None
 
 
 class SyncStartRequest(BaseModel):
@@ -194,23 +217,6 @@ class SyncFinalizeResponse(BaseModel):
     created: int = 0
     updated: int = 0
     unchanged: int = 0
-
-
-class PropertyStatsBySource(BaseModel):
-    source: str
-    active: int
-    inactive: int
-    total: int
-
-
-class DatabaseStatsResponse(BaseModel):
-    total_active: int
-    total_inactive: int
-    total: int
-    by_source: List[PropertyStatsBySource]
-    without_embedding: int
-    stale_7d: int
-    last_sync: Optional[dict] = None
 
 
 class PropertyListOut(BaseModel):

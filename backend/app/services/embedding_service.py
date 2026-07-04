@@ -39,15 +39,17 @@ class EmbeddingService:
         if not self.api_key or not text.strip():
             return None
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                self.api_url,
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": EMBEDDING_MODEL, "input": text[:8000]},
-            )
-            response.raise_for_status()
-            data = response.json()["data"][0]["embedding"]
-            return data
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.api_url,
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json={"model": EMBEDDING_MODEL, "input": text[:8000]},
+                )
+                response.raise_for_status()
+                return response.json()["data"][0]["embedding"]
+        except httpx.HTTPError:
+            return None
 
     async def embed_property(self, prop: Dict[str, Any]) -> Optional[tuple[str, List[float]]]:
         text = property_to_embed_text(prop)

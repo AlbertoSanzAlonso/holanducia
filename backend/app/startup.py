@@ -5,6 +5,7 @@ from sqlalchemy import func, select, text
 
 from backend.app.core.database import AsyncSessionLocal, engine
 from backend.app.models import Base, Category, UserSettings
+from backend.app.services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 
@@ -78,5 +79,10 @@ async def init_db() -> None:
             logger.info("Seeded default user settings")
 
         await session.commit()
+
+    async with AsyncSessionLocal() as session:
+        closed = await SyncService(session).cleanup_stuck_runs()
+        if closed:
+            logger.warning("Cerrados %s sync runs atascados en 'running'", closed)
 
     logger.info("Database schema ready")

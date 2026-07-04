@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, text
@@ -6,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models import Property
 from backend.app.services.embedding_service import EmbeddingService, property_to_embed_text
+
+logger = logging.getLogger(__name__)
 
 
 def _vector_literal(values: List[float]) -> str:
@@ -41,21 +44,26 @@ class VectorService:
         content_hash, vector = result
         literal = _vector_literal(vector)
 
-        await self.db.execute(
-            text(
-                """
-                INSERT INTO property_embeddings (property_id, content_hash, embedding)
-                VALUES (:property_id, :content_hash, :embedding::vector)
-                ON CONFLICT (property_id) DO UPDATE SET
-                    content_hash = EXCLUDED.content_hash,
-                    embedding = EXCLUDED.embedding,
-                    embedded_at = NOW()
-                """
-            ),
-            {"property_id": prop.id, "content_hash": content_hash, "embedding": literal},
-        )
-        await self.db.commit()
-        return True
+        try:
+            await self.db.execute(
+                text(
+                    """
+                    INSERT INTO property_embeddings (property_id, content_hash, embedding)
+                    VALUES (:property_id, :content_hash, CAST(:embedding AS vector))
+                    ON CONFLICT (property_id) DO UPDATE SET
+                        content_hash = EXCLUDED.content_hash,
+                        embedding = EXCLUDED.embedding,
+                        embedded_at = NOW()
+                    """
+                ),
+                {"property_id": prop.id, "content_hash": content_hash, "embedding": literal},
+            )
+            await self.db.commit()
+            return True
+        except Exception as e:
+            await self.db.rollback()
+            logger.exception("Error guardando embedding property #%s: %s", prop.id, e)
+            return False
 
     async def find_similar(
         self,
@@ -81,11 +89,11 @@ class VectorService:
                     p.title,
                     p.price,
                     p.city,
-                    1 - (pe.embedding <=> :query::vector) AS similarity
+                    1 - (pe.embedding <=> CAST(:query AS vector)) AS similarity
                 FROM property_embeddings pe
                 JOIN properties p ON p.id = pe.property_id
-                WHERE 1 - (pe.embedding <=> :query::vector) >= :min_similarity
-                ORDER BY pe.embedding <=> :query::vector
+                WHERE 1 - (pe.embedding <=> CAST(:query AS vector)) >= :min_similarity
+                ORDER BY pe.embedding <=> CAST(:query AS vector)
                 LIMIT :limit
                 """
             ),
@@ -121,7 +129,7 @@ class VectorService:
                 SELECT p.id
                 FROM properties p
                 LEFT JOIN property_embeddings pe ON pe.property_id = p.id
-                WHERE pe.id IS NULL
+                WHERE p.is_active = TRUE AND pe.id IS NULL
                 ORDER BY p.created_at DESC
                 LIMIT :limit
                 """
