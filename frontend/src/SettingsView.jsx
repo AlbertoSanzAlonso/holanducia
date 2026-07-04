@@ -246,6 +246,17 @@ export default function SettingsView() {
 
   if (loading) return <div className="p-12 text-slate-400 font-medium italic">Sincronizando sistemas...</div>
 
+  const jobProgress = selectedJob && (() => {
+    const msg = selectedJob.error_message || ''
+    const match = msg.match(/(\d+)\/(\d+)\s*en\s*BD/)
+    return {
+      current: match ? parseInt(match[1]) : null,
+      target: match ? parseInt(match[2]) : selectedJob.target_leads,
+      pct: match ? Math.min(100, Math.round((parseInt(match[1]) / parseInt(match[2])) * 100)) : null,
+      msg,
+    }
+  })()
+
   return (
     <div className="p-8 lg:p-12 max-w-2xl animate-in fade-in duration-500 pb-32">
       {/* Notificación Nativa Premium */}
@@ -562,35 +573,27 @@ export default function SettingsView() {
                     </div>
                   </div>
 
-                  {selectedJob.status === 'processing' && (() => {
-                    const msg = selectedJob.error_message || ''
-                    const match = msg.match(/(\d+)\/(\d+)\s*en\s*BD/)
-                    const current = match ? parseInt(match[1]) : null
-                    const target = match ? parseInt(match[2]) : selectedJob.target_leads
-                    const pct = current && target ? Math.min(100, Math.round((current / target) * 100)) : null
-
-                    return (
+                  {selectedJob.status === 'processing' && jobProgress && (
                       <div className="p-4 bg-blue-50 rounded-2xl border border-blue-200 space-y-3">
                         <div className="flex items-center justify-between">
                           <p className="text-[10px] uppercase tracking-widest font-black text-blue-600">Progreso en vivo</p>
-                          {pct !== null && (
-                            <p className="text-sm font-black text-blue-700">{current}/{target}</p>
+                          {jobProgress.current !== null && (
+                            <p className="text-sm font-black text-blue-700">{jobProgress.current}/{jobProgress.target}</p>
                           )}
                         </div>
-                        {pct !== null && (
+                        {jobProgress.pct !== null && (
                           <div className="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-blue-500 rounded-full transition-all duration-700"
-                              style={{ width: `${pct}%` }}
+                              style={{ width: `${jobProgress.pct}%` }}
                             />
                           </div>
                         )}
-                        {msg && (
-                          <p className="text-[10px] text-blue-700 font-medium leading-relaxed">{msg}</p>
+                        {jobProgress.msg && (
+                          <p className="text-[10px] text-blue-700 font-medium leading-relaxed">{jobProgress.msg}</p>
                         )}
                       </div>
-                    )
-                  })()}
+                    )}
 
                   {selectedJob.processed_at && (
                     <div className="p-4 bg-slate-50 rounded-2xl">
