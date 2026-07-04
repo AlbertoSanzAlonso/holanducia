@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Save, RefreshCw, Plus, X, Globe, Settings2, Database, Sparkles, AlertTriangle, Square, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from './api'
@@ -246,16 +246,17 @@ export default function SettingsView() {
 
   if (loading) return <div className="p-12 text-slate-400 font-medium italic">Sincronizando sistemas...</div>
 
-  const jobProgress = selectedJob && (() => {
+  const jobProgress = useMemo(() => {
+    if (!selectedJob) return null
     const msg = selectedJob.error_message || ''
     const match = msg.match(/(\d+)\/(\d+)\s*en\s*BD/)
     return {
-      current: match ? parseInt(match[1]) : null,
-      target: match ? parseInt(match[2]) : selectedJob.target_leads,
-      pct: match ? Math.min(100, Math.round((parseInt(match[1]) / parseInt(match[2])) * 100)) : null,
+      current: match ? parseInt(match[1], 10) : null,
+      target: match ? parseInt(match[2], 10) : selectedJob.target_leads,
+      pct: match ? Math.min(100, Math.round((parseInt(match[1], 10) / parseInt(match[2], 10)) * 100)) : null,
       msg,
     }
-  })()
+  }, [selectedJob])
 
   return (
     <div className="p-8 lg:p-12 max-w-2xl animate-in fade-in duration-500 pb-32">
