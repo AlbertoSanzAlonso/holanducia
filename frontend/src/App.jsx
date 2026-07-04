@@ -157,13 +157,14 @@ function App() {
         setTimeout(() => setScrapingNotice(null), 8000)
       } else if (data?.status === 'completed' && prevStatus !== 'completed') {
         setScrapingNotice(null)
-      } else if (!data || data.status === 'pending') {
+      } else if (!data || data.status === 'pending' || data.status === 'cancelled') {
         setScrapingNotice(null)
       }
 
       prevScrapingStatusRef.current = data?.status ?? null
     } catch {
       setSecurityBlock(null)
+      setScrapingNotice(null)
     }
   }
 
