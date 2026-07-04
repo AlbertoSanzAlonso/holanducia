@@ -25,6 +25,7 @@ MIGRATION_PGVECTOR = Path(__file__).resolve().parents[2] / "db" / "migrate_pgvec
 MIGRATION_SYNC = Path(__file__).resolve().parents[2] / "db" / "migrate_sync.sql"
 MIGRATION_MASS = Path(__file__).resolve().parents[2] / "db" / "migrate_mass_scrape.sql"
 MIGRATION_LISTS = Path(__file__).resolve().parents[2] / "db" / "migrate_property_lists.sql"
+MIGRATION_FB_GROUPS = Path(__file__).resolve().parents[2] / "db" / "migrate_fb_groups.sql"
 
 
 async def _run_migration(path: Path, label: str) -> None:
@@ -55,6 +56,10 @@ async def _ensure_property_lists() -> None:
     await _run_migration(MIGRATION_LISTS, "property_lists")
 
 
+async def _ensure_fb_groups() -> None:
+    await _run_migration(MIGRATION_FB_GROUPS, "fb_groups")
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -63,6 +68,7 @@ async def init_db() -> None:
     await _ensure_sync()
     await _ensure_mass_scrape()
     await _ensure_property_lists()
+    await _ensure_fb_groups()
 
     async with AsyncSessionLocal() as session:
         category_count = await session.scalar(select(func.count()).select_from(Category))
