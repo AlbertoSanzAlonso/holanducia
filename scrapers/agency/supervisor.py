@@ -43,8 +43,15 @@ class SupervisorAgent:
             if ai_result:
                 if ai_result["approved"]:
                     logger.info("Supervisor [IA] aprobado: %s — %s", lead.get("title"), ai_result["reason"])
-                else:
-                    logger.info("Supervisor [IA] rechazado: %s — %s", lead.get("title"), ai_result["reason"])
+                    return ai_result
+                logger.info("Supervisor [IA] rechazado: %s — %s", lead.get("title"), ai_result["reason"])
+                # Portales: no dejar que la IA vacíe lotes que pasaron heurística sólida
+                if source != "Facebook" and heuristic["quality_score"] >= 3:
+                    logger.info(
+                        "Supervisor: heurística rescata anuncio de portal (score=%s)",
+                        heuristic["quality_score"],
+                    )
+                    return heuristic
                 return ai_result
 
         logger.info("Supervisor [heurística] aprobado (sin IA): %s", lead.get("title"))

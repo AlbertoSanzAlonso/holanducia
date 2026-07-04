@@ -17,6 +17,91 @@ PersistFn = Callable[[Dict[str, Any], str], Coroutine[Any, Any, bool]]
 MarkScrapedFn = Callable[[str], Coroutine[Any, Any, None]]
 
 
+async def persist_supervised_lead(
+    lead: Dict[str, Any],
+    *,
+    source: str,
+    base_url: str,
+    connector: DatabaseConnector,
+    curator: CuratorAgent,
+    supervisor: SupervisorAgent,
+    mark_as_scraped: MarkScrapedFn,
+    raw_text: str = "",
+) -> tuple[bool, str, Optional[str]]:
+    """Persiste un anuncio: Supervisor → Curator → Postgres. Devuelve (guardado, acción, motivo)."""
+    lead = dict(lead)
+    raw_key = lead.pop("_raw_dedup_key", None)
+    context = raw_text or lead.get("description") or ""
+
+    review = await supervisor.review(lead, source=source, raw_text=context)
+    if not review["approved"]:
+        logger.info(
+            "Persist omitido — Supervisor: %s — %s",
+            review["reason"],
+            (lead.get("title") or lead.get("url") or "")[:80],
+        )
+        return False, "rejected", review["reason"]
+
+    candidate_url = lead.get("url") or ""
+    if candidate_url and is_facebook_post_url(candidate_url):
+        dedup_key = external_id_from_url(candidate_url)
+    else:
+        dedup_key = make_lead_dedup_key(lead.get("title", ""), lead.get("price", 0))
+
+    url, external_id = resolve_lead_identity(lead, base_url)
+    lead["external_id"] = external_id
+    lead["url"] = url
+    lead["source"] = source
+    lead["content_hash"] = content_hash(lead)
+
+    if lead.get("images"):
+        image_key = external_id or url or lead.get("title", "lead")
+        referer = url if (url or "").startswith("http") else None
+        hosted = await host_property_images(lead["images"], image_key, referer=referer)
+        if hosted:
+            lead["images"] = hosted
+
+    decision = await curator.evaluate_lead(lead, url=url, dedup_key=dedup_key)
+    action = decision["action"]
+    session = get_sync_session()
+
+    if action == CurateAction.UPDATE.value:
+        existing = await connector.get_property_by_url(url)
+        if existing and existing.get("content_hash") == lead["content_hash"]:
+            if session:
+                session.record_seen(url)
+                session.bump("unchanged")
+            await mark_as_scraped(url)
+            return False, "unchanged", decision["reason"]
+
+        if await connector.upsert_property_with_embedding(lead):
+            if session:
+                session.record_seen(url)
+                session.bump("updated")
+            await mark_as_scraped(url)
+            logger.info("BD actualizada: %s", lead.get("title"))
+            return True, "updated", decision["reason"]
+        logger.error("Fallo upsert (update): %s", url)
+        return False, "error", "upsert_failed"
+
+    if action != CurateAction.NEW.value:
+        logger.info("Persist omitido — Curator (%s): %s", decision["reason"], url[:80])
+        return False, action, decision["reason"]
+
+    if await connector.upsert_property_with_embedding(lead):
+        if session:
+            session.record_seen(url)
+            session.bump("created")
+        await mark_as_scraped(url)
+        if raw_key:
+            await mark_as_scraped(raw_key)
+        logger.info("BD creada: %s — %s", lead.get("title"), url[:80])
+        return True, "created", decision["reason"]
+
+    logger.error("Fallo upsert (new): %s — %s", lead.get("title"), url[:80])
+    return False, "error", "upsert_failed"
+
+
 async def persist_supervised_leads(
     leads: list[Dict[str, Any]],
     *,
@@ -42,74 +127,29 @@ async def persist_supervised_leads(
         if saved + updated + unchanged >= limit and not session:
             break
 
-        lead = dict(lead)
-        raw_key = lead.pop("_raw_dedup_key", None)
-        raw_text = raw_text_by_key.get(raw_key or "", lead.get("description") or "")
+        raw_key = lead.get("_raw_dedup_key") if isinstance(lead, dict) else None
+        raw_text = raw_text_by_key.get(raw_key or "", (lead.get("description") if isinstance(lead, dict) else "") or "")
 
-        review = await supervisor.review(lead, source=source, raw_text=raw_text)
-        if not review["approved"]:
+        ok, action, _reason = await persist_supervised_lead(
+            lead,
+            source=source,
+            base_url=base_url,
+            connector=connector,
+            curator=curator,
+            supervisor=supervisor,
+            mark_as_scraped=mark_as_scraped,
+            raw_text=raw_text,
+        )
+
+        if action == "rejected":
             rejected_supervisor += 1
             skipped += 1
-            continue
-
-        candidate_url = lead.get("url") or ""
-        if candidate_url and is_facebook_post_url(candidate_url):
-            dedup_key = external_id_from_url(candidate_url)
-        else:
-            dedup_key = make_lead_dedup_key(lead.get("title", ""), lead.get("price", 0))
-
-        url, external_id = resolve_lead_identity(lead, base_url)
-        lead["external_id"] = external_id
-        lead["url"] = url
-        lead["source"] = source
-        lead["content_hash"] = content_hash(lead)
-
-        if lead.get("images"):
-            image_key = external_id or url or lead.get("title", "lead")
-            referer = url if (url or "").startswith("http") else None
-            hosted = await host_property_images(lead["images"], image_key, referer=referer)
-            if hosted:
-                lead["images"] = hosted
-
-        decision = await curator.evaluate_lead(lead, url=url, dedup_key=dedup_key)
-        action = decision["action"]
-
-        if action == CurateAction.UPDATE.value:
-            existing = await connector.get_property_by_url(url)
-            if existing and existing.get("content_hash") == lead["content_hash"]:
-                unchanged += 1
-                if session:
-                    session.record_seen(url)
-                    session.bump("unchanged")
-                await mark_as_scraped(url)
-                logger.debug("Sync sin cambios: %s", url)
-                continue
-
-            if await connector.upsert_property_with_embedding(lead):
-                updated += 1
-                if session:
-                    session.record_seen(url)
-                    session.bump("updated")
-                await mark_as_scraped(url)
-                logger.info("Sync actualizado: %s", lead.get("title"))
-            else:
-                skipped += 1
-            continue
-
-        if action != CurateAction.NEW.value:
-            skipped += 1
-            logger.debug("Curator descartó lead (%s): %s", decision["reason"], url)
-            continue
-
-        if await connector.upsert_property_with_embedding(lead):
+        elif action == "unchanged":
+            unchanged += 1
+        elif action == "updated" and ok:
+            updated += 1
+        elif action == "created" and ok:
             saved += 1
-            if session:
-                session.record_seen(url)
-                session.bump("created")
-            await mark_as_scraped(url)
-            if raw_key:
-                await mark_as_scraped(raw_key)
-            logger.info("Persist [Postgres+vector]: %s", lead.get("title"))
         else:
             skipped += 1
 

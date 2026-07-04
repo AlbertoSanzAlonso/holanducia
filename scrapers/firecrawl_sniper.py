@@ -4,12 +4,11 @@ import os
 import httpx
 
 from scrapers.agency.analyst import AnalystAgent
-from scrapers.agency.graphs.property_pipeline import run_structured_leads_pipeline
 from scrapers.base_scraper import BaseScraper
 from scrapers.image_utils import extract_image_urls
 from scrapers.portal_sniper_core import (
     build_detail_url_queue,
-    scrape_detail_urls_parallel,
+    scrape_and_persist_details,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,35 +64,20 @@ class FirecrawlSniper(BaseScraper):
         if not to_scrape:
             return 0
 
-        logger.info("Sniper Firecrawl: extracción profunda de %s fichas", len(to_scrape))
+        logger.info("Sniper Firecrawl: %s fichas — guardado incremental", len(to_scrape))
 
-        bulk_leads = await scrape_detail_urls_parallel(
+        async def report_status(status: str, message: str) -> None:
+            await self.connector.upsert_scraping_status(status, message)
+
+        saved, _stats = await scrape_and_persist_details(
             to_scrape,
             fetch_page=self._fetch_firecrawl,
             analyst=self.analyst,
             should_skip=self.is_already_scraped,
-        )
-
-        if not bulk_leads:
-            return 0
-
-        source_name = bulk_leads[0].get("source") or "portals"
-        result = await run_structured_leads_pipeline(
-            source=source_name,
-            base_url=to_scrape[0],
-            leads=bulk_leads,
-            limit=self.limit,
             connector=self.connector,
-            persist_lead=self._persist_lead,
-            is_already_scraped=self.is_already_scraped,
             mark_as_scraped=self.mark_as_scraped,
+            limit=self.limit,
+            base_url=to_scrape[0],
+            report_status=report_status,
         )
-        return result.get("saved_count", 0)
-
-    async def _persist_lead(self, ai_data: dict, _base_url: str) -> bool:
-        try:
-            await self.connector.upsert_property_with_embedding(ai_data)
-            return True
-        except Exception as e:
-            logger.error("No se pudo guardar lead: %s", e)
-            return False
+        return saved

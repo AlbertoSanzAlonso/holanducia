@@ -146,3 +146,137 @@ async def scrape_detail_urls_parallel(
 
     results = await asyncio.gather(*[one(u) for u in detail_urls])
     return [lead for lead in results if lead]
+
+
+async def scrape_and_persist_details(
+    detail_urls: List[str],
+    *,
+    fetch_page: Callable[[str], Awaitable[Optional[Dict[str, Any]]]],
+    analyst,
+    should_skip: Callable[[str], Awaitable[bool]],
+    connector,
+    mark_as_scraped: Callable[[str], Awaitable[None]],
+    limit: int,
+    base_url: str,
+    report_status: Optional[Callable[[str, str], Awaitable[None]]] = None,
+) -> tuple[int, Dict[str, int]]:
+    """Scrapea ficha a ficha y persiste en BD en cuanto pasa Supervisor + Curator."""
+    from scrapers.agency.curator import CuratorAgent
+    from scrapers.agency.persist import persist_supervised_lead
+    from scrapers.agency.supervisor import SupervisorAgent
+
+    curator = CuratorAgent(connector, should_skip)
+    supervisor = SupervisorAgent()
+    sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
+    lock = asyncio.Lock()
+
+    saved_total = 0
+    stats = {
+        "created": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "rejected_supervisor": 0,
+        "duplicates": 0,
+        "errors": 0,
+        "scraped": 0,
+    }
+
+    async def process_url(url: str) -> None:
+        nonlocal saved_total
+
+        async with lock:
+            if saved_total >= limit:
+                return
+
+        if await should_skip(url):
+            logger.info("⏭️ Omitiendo ficha (cache/ok): %s", url[:70])
+            async with lock:
+                stats["duplicates"] += 1
+            return
+
+        async with sem:
+            async with lock:
+                if saved_total >= limit:
+                    return
+
+            data = await fetch_page(url)
+            if not data:
+                async with lock:
+                    stats["errors"] += 1
+                return
+
+            markdown = (data.get("markdown") or "").strip()
+            if not markdown:
+                async with lock:
+                    stats["errors"] += 1
+                return
+
+            lead = await extract_portal_lead(
+                analyst,
+                url=url,
+                markdown=markdown,
+                html=data.get("html") or "",
+                images=data.get("images") or [],
+            )
+            if not lead:
+                async with lock:
+                    stats["errors"] += 1
+                return
+
+            async with lock:
+                stats["scraped"] += 1
+                if saved_total >= limit:
+                    return
+
+            source = lead.get("source") or portal_host(url) or "portals"
+            ok, action, reason = await persist_supervised_lead(
+                lead,
+                source=source,
+                base_url=base_url,
+                connector=connector,
+                curator=curator,
+                supervisor=supervisor,
+                mark_as_scraped=mark_as_scraped,
+                raw_text=lead.get("description") or "",
+            )
+
+            async with lock:
+                if action == "rejected":
+                    stats["rejected_supervisor"] += 1
+                elif action == "unchanged":
+                    stats["unchanged"] += 1
+                elif action in ("duplicate", "db_url_match", "redis_lead_hash"):
+                    stats["duplicates"] += 1
+                elif action == "updated" and ok:
+                    stats["updated"] += 1
+                    saved_total += 1
+                elif action == "created" and ok:
+                    stats["created"] += 1
+                    saved_total += 1
+                elif action == "error":
+                    stats["errors"] += 1
+                else:
+                    stats["duplicates"] += 1
+
+                current_saved = saved_total
+
+            if ok and report_status:
+                title = (lead.get("title") or url)[:60]
+                await report_status(
+                    "processing",
+                    f"{source}: {current_saved}/{limit} en BD — {title}",
+                )
+
+    await asyncio.gather(*[process_url(u) for u in detail_urls])
+
+    logger.info(
+        "Portal persistido en streaming — %s en BD (%s nuevos, %s actualizados, "
+        "%s rechazados, %s duplicados, %s scrapeados)",
+        saved_total,
+        stats["created"],
+        stats["updated"],
+        stats["rejected_supervisor"],
+        stats["duplicates"],
+        stats["scraped"],
+    )
+    return saved_total, stats

@@ -90,7 +90,13 @@ class BaseScraper(ABC):
             return False
 
         try:
-            return self.redis.sismember("holanducia:processed_urls", url)
+            if self.redis.sismember("holanducia:processed_urls", url):
+                prop = await self.connector.get_property_by_url(url)
+                if not prop:
+                    logger.info("Redis obsoleto (sin BD) — re-scrape: %s", url[:70])
+                    return False
+                return True
+            return False
         except Exception as e:
             logger.warning(f"Could not check Redis for duplicates: {e}")
             return False
