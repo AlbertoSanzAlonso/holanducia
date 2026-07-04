@@ -73,24 +73,43 @@ def _normalize_page(markdown: str, html: str = "", images: Optional[list] = None
     }
 
 
+def _is_spanish_portal(url: str) -> bool:
+    return any(
+        domain in url.lower()
+        for domain in ("fotocasa.es", "habitaclia.com", "idealista.com", "pisos.com")
+    )
+
+
 async def fetch_with_firecrawl(url: str) -> Optional[Dict[str, Any]]:
     api_key = os.getenv("FIRECRAWL_API_KEY", "").strip()
     if not api_key:
         return None
+
+    is_index = is_portal_index_url(url)
+    spanish = _is_spanish_portal(url)
+
+    payload: Dict[str, Any] = {
+        "url": url,
+        "formats": ["markdown", "html"],
+        "onlyMainContent": not is_index,
+    }
+
+    if spanish:
+        payload["location"] = {"country": "ES", "languages": ["es-ES"]}
 
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 "https://api.firecrawl.dev/v1/scrape",
                 headers={"Authorization": f"Bearer {api_key}"},
-                json={"url": url, "formats": ["markdown", "html"], "onlyMainContent": True},
+                json=payload,
             )
             if response.status_code != 200:
                 logger.warning("Firecrawl (%s): %s", response.status_code, response.text[:200])
                 return None
-            payload = response.json().get("data") or {}
-            markdown = (payload.get("markdown") or "").strip()
-            html = payload.get("html") or ""
+            payload_data = response.json().get("data") or {}
+            markdown = (payload_data.get("markdown") or "").strip()
+            html = payload_data.get("html") or ""
             if not markdown and not html:
                 return None
             if is_antibot_content(markdown=markdown, html=html):

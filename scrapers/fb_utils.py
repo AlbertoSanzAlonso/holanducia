@@ -156,7 +156,7 @@ def quality_score(lead: Dict[str, Any], raw_text: str) -> int:
     return score
 
 
-def is_quality_facebook_lead(lead: Dict[str, Any], raw_text: str, *, min_score: int = 5) -> bool:
+def is_quality_facebook_lead(lead: Dict[str, Any], raw_text: str, *, min_score: int = 4) -> bool:
     if not is_property_listing_text(raw_text):
         return False
     price = float(lead.get("price") or 0)
@@ -164,4 +164,22 @@ def is_quality_facebook_lead(lead: Dict[str, Any], raw_text: str, *, min_score: 
     has_data = bool(lead.get("rooms") or lead.get("size_m2"))
     if price <= 0 and not has_photo and not has_data:
         return False
-    return quality_score(lead, raw_text) >= min_score
+    score = quality_score(lead, raw_text)
+    passed = score >= min_score
+    if not passed:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "FB calidad baja (score=%s/%s): price=%s rooms=%s size=%s baths=%s imgs=%s url=%s txt=%s — %s",
+            score,
+            min_score,
+            price,
+            lead.get("rooms"),
+            lead.get("size_m2"),
+            lead.get("bathrooms"),
+            bool(lead.get("images")),
+            bool(lead.get("url")),
+            is_property_listing_text(raw_text),
+            (lead.get("title") or raw_text[:80]),
+        )
+    return passed

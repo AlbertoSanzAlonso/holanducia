@@ -31,6 +31,8 @@ export const api = {
   getSettings: () => request('/api/settings'),
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
   createScrapingRequest: (data) => request('/api/scraping-requests', { method: 'POST', body: JSON.stringify(data) }),
+  listScrapingRequests: (status = '') => request(`/api/scraping-requests?limit=20${status ? `&status=${status}` : ''}`),
+  cancelScrapingRequest: (id) => request(`/api/scraping-requests/${id}`, { method: 'DELETE' }),
   getLatestScrapingRequest: () => request('/api/scraping-requests/latest'),
   getDatabaseStats: () => request('/api/sync/stats'),
   embedBackfill: (limit = 500) =>

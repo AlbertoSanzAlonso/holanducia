@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, RefreshCw, Plus, X, Globe, Settings2, Database, Sparkles, AlertTriangle } from 'lucide-react'
+import { Save, RefreshCw, Plus, X, Globe, Settings2, Database, Sparkles, AlertTriangle, Square, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from './api'
 
@@ -28,6 +28,9 @@ export default function SettingsView() {
   useEffect(() => {
     fetchSettings()
     refreshStats()
+    fetchJobs()
+    const interval = setInterval(fetchJobs, 10000)
+    return () => clearInterval(interval)
   }, [])
 
   const refreshStats = async () => {
@@ -86,6 +89,8 @@ export default function SettingsView() {
   }
 
   const [notification, setNotification] = useState(null)
+  const [jobs, setJobs] = useState([])
+  const [jobsLoading, setJobsLoading] = useState(false)
 
   const buildPortalUrls = (cfg) => {
     const cities = cfg.cities?.length ? cfg.cities : ['malaga']
@@ -150,6 +155,47 @@ export default function SettingsView() {
     setTimeout(() => setNotification(null), 6000)
     setSaving(false)
     refreshStats()
+  }
+
+  const fetchJobs = async () => {
+    setJobsLoading(true)
+    try {
+      const data = await api.listScrapingRequests()
+      setJobs(data || [])
+    } catch {
+      setJobs([])
+    } finally {
+      setJobsLoading(false)
+    }
+  }
+
+  const cancelJob = async (id) => {
+    try {
+      await api.cancelScrapingRequest(id)
+      fetchJobs()
+      refreshStats()
+    } catch (e) {
+      setNotification('Error al cancelar: ' + (e.message || 'desconocido'))
+      setTimeout(() => setNotification(null), 4000)
+    }
+  }
+
+  const statusIcon = (status) => {
+    switch (status) {
+      case 'completed': return <CheckCircle2 size={16} className="text-emerald-500" />
+      case 'processing': return <Loader2 size={16} className="text-blue-500 animate-spin" />
+      case 'cancelled': return <XCircle size={16} className="text-slate-400" />
+      default: return <Clock size={16} className="text-amber-500" />
+    }
+  }
+
+  const statusLabel = (status) => {
+    switch (status) {
+      case 'completed': return 'Completada'
+      case 'processing': return 'En proceso'
+      case 'cancelled': return 'Cancelada'
+      default: return 'Pendiente'
+    }
   }
 
   const handleEmbedSync = async () => {
@@ -390,6 +436,73 @@ export default function SettingsView() {
             </div>
           </div>
         )}
+
+        {/* MISIONES DE SCRAPING */}
+        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500 text-white">
+                <Clock size={18} />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Misiones de scraping</p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchJobs}
+              disabled={jobsLoading}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-white transition-all"
+            >
+              <RefreshCw size={14} className={jobsLoading ? 'animate-spin' : ''} />
+              Actualizar
+            </button>
+          </div>
+
+          {jobs.length === 0 ? (
+            <p className="text-xs text-slate-400 font-medium text-center py-4">No hay misiones recientes</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {jobs.map((job) => (
+                <div
+                  key={job.id}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    job.status === 'processing'
+                      ? 'bg-blue-50/50 border-blue-200'
+                      : job.status === 'completed'
+                      ? 'bg-white border-slate-100'
+                      : 'bg-white border-slate-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {statusIcon(job.status)}
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-700 truncate">
+                        #{job.id} {job.source_name || 'Scraping'}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        {statusLabel(job.status)}
+                        {job.status === 'completed' && job.error_message && (
+                          <span className="ml-1 text-emerald-600"> · {job.error_message.split('—')[0]}</span>
+                        )}
+                        {job.target_leads ? ` · cuota ${job.target_leads}` : ''}
+                        {job.groups?.length ? ` · ${job.groups.length} grupos` : ''}
+                        {job.portal_urls?.length ? ` · ${job.portal_urls.length} portales` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  {(job.status === 'pending' || job.status === 'processing') && (
+                    <button
+                      onClick={() => cancelJob(job.id)}
+                      className="shrink-0 p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 transition-all"
+                      title="Cancelar misión"
+                    >
+                      <Square size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-6">
           <div>

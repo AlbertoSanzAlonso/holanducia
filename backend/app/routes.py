@@ -346,6 +346,19 @@ async def pending_scraping_request(db: AsyncSession = Depends(get_db)):
     return result.scalar_one_or_none()
 
 
+@router.get("/scraping-requests", response_model=List[ScrapingRequestOut])
+async def list_scraping_requests(
+    status: Optional[str] = None,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(ScrapingRequest).order_by(ScrapingRequest.requested_at.desc())
+    if status:
+        query = query.where(ScrapingRequest.status == status)
+    result = await db.execute(query.limit(limit))
+    return list(result.scalars().all())
+
+
 @router.post("/scraping-requests", response_model=ScrapingRequestOut)
 async def create_scraping_request(payload: ScrapingRequestCreate, db: AsyncSession = Depends(get_db)):
     req = ScrapingRequest(**payload.model_dump())
@@ -372,6 +385,27 @@ async def update_scraping_request(
     await db.commit()
     await db.refresh(req)
     return req
+
+
+@router.delete("/scraping-requests/{request_id}")
+async def cancel_scraping_request(
+    request_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(ScrapingRequest).where(ScrapingRequest.id == request_id))
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Scraping request not found")
+
+    if req.status in ("completed", "cancelled"):
+        raise HTTPException(status_code=400, detail="Solo se pueden cancelar misiones pendientes o en proceso")
+
+    req.status = "cancelled"
+    req.processed_at = datetime.now(timezone.utc)
+    req.error_message = "Cancelado por el usuario"
+    await db.commit()
+    await db.refresh(req)
+    return {"ok": True, "message": f"Misión {request_id} cancelada"}
 
 
 @router.get("/lists", response_model=List[PropertyListOut])

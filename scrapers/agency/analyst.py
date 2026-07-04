@@ -234,7 +234,21 @@ Devuelve SOLO JSON:
     def _clean_price(self, price_val):
         try:
             if isinstance(price_val, str):
-                price_val = re.sub(r'[^\d.]', '', price_val)
+                cleaned = re.sub(r'[^\d.,]', '', price_val)
+                has_dot = '.' in cleaned
+                has_comma = ',' in cleaned
+                if has_dot and has_comma:
+                    if cleaned.rfind('.') > cleaned.rfind(','):
+                        cleaned = cleaned.replace(',', '').replace('.', '')
+                    else:
+                        cleaned = cleaned.replace('.', '').replace(',', '.')
+                elif has_dot and re.match(r'^\d{1,3}(\.\d{3})+$', cleaned):
+                    cleaned = cleaned.replace('.', '')
+                elif has_comma and re.match(r'^\d{1,3}(,\d{3})+$', cleaned):
+                    cleaned = cleaned.replace(',', '')
+                else:
+                    cleaned = cleaned.replace(',', '.')
+                price_val = cleaned
             return float(price_val)
         except:
             return 0
