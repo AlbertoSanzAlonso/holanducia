@@ -6,7 +6,10 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 from scrapers.agency.types import CurateAction, CurateResult, RawLead
 from scrapers.db_connector import DatabaseConnector
 from scrapers.fb_utils import is_property_listing_text
+from scrapers.portal_detail_parser import is_card_snippet
+from scrapers.portal_utils import is_listing_detail_url
 from scrapers.sync_context import is_sync_mode
+from scrapers.image_utils import is_portal_index_url
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +125,21 @@ class CuratorAgent:
                     "raw_lead": {"url": url, "dedup_key": dedup_key},
                     "reason": "sync_update_existing",
                 }
+            if is_listing_detail_url(url):
+                existing = await self.connector.get_property_by_url(url)
+                if existing and (
+                    is_card_snippet(existing.get("title"), existing.get("description"))
+                    or (
+                        float(existing.get("price") or 0) > 0
+                        and not existing.get("size_m2")
+                        and not existing.get("rooms")
+                    )
+                ):
+                    return {
+                        "action": CurateAction.UPDATE.value,
+                        "raw_lead": {"url": url, "dedup_key": dedup_key},
+                        "reason": "portal_rescrape_incomplete",
+                    }
             return {
                 "action": CurateAction.DUPLICATE.value,
                 "raw_lead": {"url": url, "dedup_key": dedup_key},

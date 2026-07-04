@@ -9,6 +9,9 @@ import redis
 
 from scrapers.db_connector import DatabaseConnector
 from scrapers.sync_context import is_sync_mode
+from scrapers.image_utils import is_portal_index_url
+from scrapers.portal_sniper_core import is_incomplete_portal_record
+from scrapers.portal_utils import is_listing_detail_url
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -64,32 +67,49 @@ class BaseScraper(ABC):
     async def scrape(self):
         pass
 
+    async def _needs_portal_rescrape(self, url: str) -> bool:
+        if not is_listing_detail_url(url):
+            return False
+        try:
+            prop = await self.connector.get_property_by_url(url)
+            return is_incomplete_portal_record(prop)
+        except Exception as e:
+            logger.debug("No se pudo comprobar calidad de %s: %s", url[:60], e)
+            return False
+
     async def is_already_scraped(self, url: str) -> bool:
-        """Checks if URL was already processed in the last 7 days"""
+        """Evita re-scrape salvo sync o fichas incompletas en BD."""
         if is_sync_mode():
+            return False
+        if is_portal_index_url(url):
+            return False
+        if await self._needs_portal_rescrape(url):
+            logger.info("♻️ Re-scrape ficha incompleta: %s", url[:70])
             return False
         if not self.redis:
             return False
-        
+
         try:
-            # We use a Set in Redis for global uniqueness
             return self.redis.sismember("holanducia:processed_urls", url)
         except Exception as e:
             logger.warning(f"Could not check Redis for duplicates: {e}")
             return False
 
     async def mark_as_scraped(self, url: str):
-        """Marks URL as processed to avoid re-scraping and wasting Firecrawl credits"""
+        """Marca URL procesada; no cachea páginas índice."""
+        if is_portal_index_url(url):
+            return
         if not self.redis:
             return
-            
+
         try:
             self.redis.sadd("holanducia:processed_urls", url)
         except Exception as e:
             logger.warning(f"Could not save URL to Redis: {e}")
 
     async def scrape_with_crawl4ai(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
-        if await self.is_already_scraped(url):
+        skip_cache = is_portal_index_url(url) or await self._needs_portal_rescrape(url)
+        if not skip_cache and await self.is_already_scraped(url):
             logger.info(f"⏭️ Skipping (Already in Redis): {url}")
             return None
 
@@ -107,8 +127,8 @@ class BaseScraper(ABC):
             return None
 
     async def scrape_with_firecrawl(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
-        # Check before spending credits!
-        if await self.is_already_scraped(url):
+        skip_cache = is_portal_index_url(url) or await self._needs_portal_rescrape(url)
+        if not skip_cache and await self.is_already_scraped(url):
             logger.info(f"⏭️ Skipping (Already in Redis): {url}")
             return None
 
