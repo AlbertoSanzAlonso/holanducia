@@ -95,7 +95,7 @@ def build_property_pipeline(
                 ai_data["url"] = post_url.strip()
             dom_images = meta.get("images") or []
             if dom_images:
-                ai_data["images"] = dom_images[:5]
+                ai_data["images"] = dom_images
             if source == "Facebook" and ai_data.get("is_individual") is None:
                 ai_data["is_individual"] = True
 

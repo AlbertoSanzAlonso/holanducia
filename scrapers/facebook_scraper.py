@@ -83,7 +83,7 @@ EXTRACT_POSTS_JS = """() => {
                 imgs.push(m[1].split('&')[0]);
             }
         });
-        return [...new Set(imgs)].slice(0, 8);
+        return [...new Set(imgs)];
     }
 
     const articles = document.querySelectorAll('div[role="article"], article');

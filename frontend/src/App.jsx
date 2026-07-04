@@ -4,19 +4,22 @@ import {
   Search, MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
   Eye, Mail, MoreHorizontal, ChevronRight, ChevronLeft, Menu, X,
   ShieldCheck, AlertTriangle, Trash2, CheckCircle2, FolderHeart, Tag,
-  BarChart3, Settings as SettingsIcon, LayoutGrid, ListPlus, Edit3, Bookmark
+  BarChart3, Settings as SettingsIcon, LayoutGrid, ListPlus, Edit3, Bookmark, Images
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import PropertyIntelligenceModal from './PropertyIntelligenceModal'
 import AdvisorChat from './AdvisorChat'
 import SettingsView from './SettingsView'
+import StatisticsView from './StatisticsView'
 import PropertyFilters from './PropertyFilters'
 import ListEditModal from './ListEditModal'
-import { formatPrice, getListingUrl, resolveImageUrl, hasPropertyImage } from './utils/propertyDisplay'
+import PropertyGallery, { getPropertyImageUrls } from './PropertyGallery'
+import { formatPrice, getListingUrl, hasPropertyImage } from './utils/propertyDisplay'
 import {
   DEFAULT_FILTERS,
   applyPropertyFilters,
   getUniqueCities,
+  getUniqueSources,
   countActiveFilters,
 } from './utils/propertyFilters'
 
@@ -151,6 +154,7 @@ function App() {
   const listPropertyIds = selectedList?.property_ids ?? null
 
   const cityOptions = getUniqueCities(properties)
+  const sourceOptions = getUniqueSources(properties)
   const activeFilterCount = countActiveFilters(filters)
 
   const filteredProperties = applyPropertyFilters(properties, filters, {
@@ -184,6 +188,7 @@ function App() {
     }
     if (filter === 'hot') return 'Ninguna oportunidad TOP (score ≥ 80). Prueba el filtro TODOS.'
     if (filter === 'particular') return 'Ningún anuncio de particular con los filtros actuales.'
+    if (filters.sources?.length > 0) return `Ningún anuncio de ${filters.sources.join(', ')} con los filtros actuales.`
     if (activeFilterCount > 0) return 'Ningún anuncio coincide con los filtros aplicados. Prueba a ampliar el rango de precio o limpiar filtros.'
     return null
   })()
@@ -329,6 +334,7 @@ function App() {
                onChange={setFilters}
                onReset={resetFilters}
                cities={cityOptions}
+               sources={sourceOptions}
                activeCount={activeFilterCount}
                expanded={filtersExpanded}
                onToggleExpanded={() => setFiltersExpanded((v) => !v)}
@@ -357,12 +363,13 @@ function App() {
                         className={`group relative flex flex-col cursor-pointer ${selectedIds.has(prop.id) ? 'scale-[0.98]' : ''}`}
                     >
                         <div className={`relative aspect-[4/3] rounded-[2.5rem] overflow-hidden bg-slate-100 shadow-lg mb-6 border-4 transition-all ${selectedIds.has(prop.id) ? 'border-[#00acee]' : 'border-transparent'}`}>
-                          <img
-                            src={resolveImageUrl(prop.images?.[0]) || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000'}
-                            alt={prop.title || 'Propiedad'}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
-                            onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000' }}
-                          />
+                          <PropertyGallery images={prop.images} title={prop.title} variant="card" className="w-full h-full aspect-[4/3]" />
+                          {getPropertyImageUrls(prop.images).length > 1 && (
+                            <div className="absolute bottom-6 right-6 flex items-center gap-1.5 bg-black/50 text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest pointer-events-none">
+                              <Images size={12} />
+                              {getPropertyImageUrls(prop.images).length} fotos
+                            </div>
+                          )}
                           {!hasPropertyImage(prop) && (
                             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
                               Sin foto
@@ -459,6 +466,8 @@ function App() {
                 </div>
              )}
           </section>
+        ) : view === 'stats' ? (
+          <StatisticsView properties={properties} />
         ) : (
           <SettingsView />
         )}
@@ -592,6 +601,7 @@ function SidebarContent({ setView, setFilter, setSelectedCategoryId, setSelected
       <nav className="flex-1 px-8 mt-12 space-y-3 overflow-y-auto">
         <p className="px-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-4">Radar Principal</p>
         <SidebarNavItem active={view === 'dashboard' && !selectedCategoryId && !selectedListId} icon={<LayoutGrid size={22} />} label="Todo el Mercado" onClick={handleMarket} />
+        <SidebarNavItem active={view === 'stats'} icon={<BarChart3 size={22} />} label="Estadísticas" onClick={() => { setView('stats'); setSelectedCategoryId(null); setSelectedListId(null) }} />
         <SidebarNavItem active={view === 'settings'} icon={<SettingsIcon size={22} />} label="Configuración" onClick={() => setView('settings')} />
         
         <div className="py-10 px-6"><div className="h-px bg-white/5 w-full" /></div>

@@ -14,7 +14,8 @@ def content_hash(lead: Dict[str, Any]) -> str:
         "rooms": lead.get("rooms"),
         "bathrooms": lead.get("bathrooms"),
         "description": (lead.get("description") or "")[:500],
-        "images": (lead.get("images") or [])[:3],
+        "images": (lead.get("images") or [])[:5],
+        "images_count": len(lead.get("images") or []),
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]

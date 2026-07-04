@@ -98,7 +98,7 @@ async def extract_portal_lead(
 
     if is_card_snippet(pre_parsed.get("title"), pre_parsed.get("description")):
         logger.warning("Tarjeta/listado detectado en %s — IA profunda", url[:70])
-        pre_parsed = {"images": (images or [])[:8], "url": url}
+        pre_parsed = {"images": images or [], "url": url}
 
     lead = await analyst.parse_portal_detail(
         markdown,
@@ -112,7 +112,7 @@ async def extract_portal_lead(
     lead["url"] = url.rstrip("/")
     lead["source"] = source_name
     if images and not lead.get("images"):
-        lead["images"] = images[:8]
+        lead["images"] = images
     return lead
 
 

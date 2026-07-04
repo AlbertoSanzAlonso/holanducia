@@ -9,6 +9,7 @@ export const SORT_OPTIONS = [
 export const DEFAULT_FILTERS = {
   title: '',
   city: '',
+  sources: [],
   minPrice: '',
   maxPrice: '',
   sort: 'newest',
@@ -30,6 +31,15 @@ function propertyDate(p) {
   return raw ? new Date(raw).getTime() : 0
 }
 
+export function getUniqueSources(properties) {
+  const values = new Set()
+  for (const p of properties) {
+    const source = (p.source || '').trim()
+    if (source) values.add(source)
+  }
+  return [...values].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
 export function getUniqueCities(properties) {
   const values = new Set()
   for (const p of properties) {
@@ -45,6 +55,7 @@ export function countActiveFilters(filters) {
   let n = 0
   if (filters.title?.trim()) n += 1
   if (filters.city) n += 1
+  if (filters.sources?.length > 0) n += 1
   if (filters.minPrice !== '' && filters.minPrice != null) n += 1
   if (filters.maxPrice !== '' && filters.maxPrice != null) n += 1
   if (filters.sort && filters.sort !== 'newest') n += 1
@@ -55,6 +66,7 @@ export function applyPropertyFilters(properties, filters, { filter = 'all', sele
   const titleQ = (filters.title || '').trim().toLowerCase()
   const minP = parsePrice(filters.minPrice)
   const maxP = parsePrice(filters.maxPrice)
+  const sourceSet = filters.sources?.length ? new Set(filters.sources) : null
   const listSet = listPropertyIds ? new Set(listPropertyIds) : null
 
   let result = properties.filter((p) => {
@@ -62,6 +74,11 @@ export function applyPropertyFilters(properties, filters, { filter = 'all', sele
     if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
     if (filter === 'hot' && (p.opportunity_score ?? 0) < 80) return false
     if (filter === 'particular' && !p.is_individual) return false
+
+    if (sourceSet) {
+      const source = (p.source || '').trim()
+      if (!sourceSet.has(source)) return false
+    }
 
     if (titleQ) {
       const haystack = [p.title, p.description, p.neighborhood, p.address]

@@ -1,4 +1,4 @@
-import { ArrowUpDown, MapPin, SlidersHorizontal, Tag, X } from 'lucide-react'
+import { ArrowUpDown, Globe, MapPin, SlidersHorizontal, Tag, X } from 'lucide-react'
 import { SORT_OPTIONS } from './utils/propertyFilters'
 
 export default function PropertyFilters({
@@ -6,11 +6,20 @@ export default function PropertyFilters({
   onChange,
   onReset,
   cities = [],
+  sources = [],
   activeCount = 0,
   expanded,
   onToggleExpanded,
 }) {
   const set = (key, value) => onChange({ ...filters, [key]: value })
+
+  const toggleSource = (source) => {
+    const current = filters.sources || []
+    const next = current.includes(source)
+      ? current.filter((s) => s !== source)
+      : [...current, source]
+    set('sources', next)
+  }
 
   return (
     <div className="mb-12 rounded-[2rem] border border-slate-100 bg-slate-50/80 shadow-sm overflow-hidden">
@@ -70,6 +79,41 @@ export default function PropertyFilters({
                   <option key={city} value={city}>{city}</option>
                 ))}
               </select>
+            </FilterField>
+
+            <FilterField label="Fuente" icon={<Globe size={14} />} className="sm:col-span-2 lg:col-span-2">
+              <div className="flex flex-wrap gap-2 min-h-[46px] items-center">
+                {sources.length === 0 ? (
+                  <span className="text-xs text-slate-400 font-semibold px-1">Sin fuentes en la BD</span>
+                ) : (
+                  sources.map((source) => {
+                    const active = (filters.sources || []).includes(source)
+                    return (
+                      <button
+                        key={source}
+                        type="button"
+                        onClick={() => toggleSource(source)}
+                        className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border-2 ${
+                          active
+                            ? 'bg-[#0f172a] text-white border-[#0f172a]'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-[#00acee]'
+                        }`}
+                      >
+                        {source}
+                      </button>
+                    )
+                  })
+                )}
+                {(filters.sources || []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => set('sources', [])}
+                    className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-red-500"
+                  >
+                    Todas
+                  </button>
+                )}
+              </div>
             </FilterField>
 
             <FilterField label="Precio mín. (€)">

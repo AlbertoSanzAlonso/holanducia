@@ -9,7 +9,7 @@ from scrapers.db_connector import DatabaseConnector
 from scrapers.portal_utils import external_id_from_url, is_facebook_post_url, resolve_lead_identity
 from scrapers.sync_context import get_sync_session
 from scrapers.sync_utils import content_hash
-from scrapers.fb_image_storage import host_facebook_images
+from scrapers.property_image_storage import host_property_images
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +64,10 @@ async def persist_supervised_leads(
         lead["source"] = source
         lead["content_hash"] = content_hash(lead)
 
-        if source == "Facebook" and lead.get("images"):
-            image_key = url or external_id or lead.get("title", "fb")
-            hosted = await host_facebook_images(lead["images"], image_key)
+        if lead.get("images"):
+            image_key = external_id or url or lead.get("title", "lead")
+            referer = url if (url or "").startswith("http") else None
+            hosted = await host_property_images(lead["images"], image_key, referer=referer)
             if hosted:
                 lead["images"] = hosted
 

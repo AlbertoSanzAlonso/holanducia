@@ -6,6 +6,7 @@ import {
   Trash2, Edit3, Save, RotateCcw, Bookmark, Plus
 } from 'lucide-react';
 import { formatPrice, getListingUrl, resolveImageUrl, hasPropertyImage } from './utils/propertyDisplay';
+import PropertyGallery from './PropertyGallery';
 
 const PropertyIntelligenceModal = ({ property: initialProperty, categories, lists = [], onClose, onUpdate, onDelete, onAddToList, onRemoveFromList }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -49,26 +50,22 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, list
         className="relative w-full max-w-6xl bg-white rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col lg:flex-row max-h-[90vh]"
       >
         {/* Media Side */}
-        <div className="lg:w-2/5 relative h-64 lg:h-auto bg-slate-100">
-          <img 
-            src={resolveImageUrl(property.images?.[0]) || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1000&auto=format&fit=crop'} 
-            className="w-full h-full object-cover"
-            alt={property.title}
-          />
+        <div className="lg:w-2/5 relative h-64 lg:h-auto min-h-[16rem] bg-slate-100">
+          <PropertyGallery images={property.images} title={property.title} className="w-full h-full min-h-[16rem] lg:min-h-full" />
           {!hasPropertyImage(property) && (
             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
               Sin foto
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-60" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-60 pointer-events-none" />
           
-          <div className="absolute bottom-8 left-8 right-8 text-white">
+          <div className="absolute bottom-8 left-8 right-8 text-white pointer-events-none">
             <span className="px-3 py-1.5 bg-[#00acee] rounded-full text-[10px] font-black uppercase tracking-wider mb-4 inline-block shadow-lg">
               {property.source}
             </span>
             {isEditing ? (
                 <input 
-                    className="bg-white/20 border border-white/30 rounded-xl px-3 py-2 text-xl font-bold w-full text-white outline-none focus:bg-white/30 transition-all"
+                    className="bg-white/20 border border-white/30 rounded-xl px-3 py-2 text-xl font-bold w-full text-white outline-none focus:bg-white/30 transition-all pointer-events-auto"
                     value={property.title}
                     onChange={(e) => setProperty({...property, title: e.target.value})}
                 />
@@ -79,7 +76,7 @@ const PropertyIntelligenceModal = ({ property: initialProperty, categories, list
               <MapIcon size={14} className="text-[#00acee]" /> 
               {isEditing ? (
                   <input 
-                    className="bg-transparent border-b border-white/20 text-white outline-none w-32"
+                    className="bg-transparent border-b border-white/20 text-white outline-none w-32 pointer-events-auto"
                     value={property.city}
                     onChange={(e) => setProperty({...property, city: e.target.value})}
                   />
