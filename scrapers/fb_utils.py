@@ -10,6 +10,11 @@ PROPERTY_TYPES = (
     "bungalow", "adosado", "townhouse", "local comercial", "local ",
     "garaje", "plaza de garaje", "trastero", "terreno", "parcela",
     "nave", "oficina", "habitacion", "habitación", "dormitorio",
+    # English (Costa del Sol expat groups)
+    "apartment", "flat", "house", "villa", "penthouse", "studio",
+    "property", "bedroom", "bedrooms", "bed", "beds", "bath", "baths",
+    "town house", "semi-detached", "detached", "terraced",
+    "plot", "land", "garage", "parking", "storage room",
 )
 
 LISTING_INTENTS = (
@@ -17,6 +22,11 @@ LISTING_INTENTS = (
     "alquiler", "venta", "precio", "€", "euro", "euros", "mensualidad",
     "comunidad de propietarios", "sin comision", "particular vende",
     "oportunidad", "rebajado", "urgente venta", "busco inquilino",
+    # English (Costa del Sol expat groups)
+    "for sale", "for rent", "to rent", "long term", "short term",
+    "reduced", "bargain", "investment", "opportunity",
+    "€", "euros", "euro", "price", "priced", "monthly",
+    "private sale", "no agents", "direct sale",
 )
 
 NON_LISTING_HINTS = (
