@@ -67,13 +67,21 @@ def is_property_listing_text(text: str, has_images: bool = False) -> bool:
     has_type = any(t in lower for t in PROPERTY_TYPES)
     has_intent = any(i in lower for i in LISTING_INTENTS)
     has_price = bool(extract_price_from_text(text))
+    has_rooms = bool(re.search(r'\b(\d+)\s*(?:habitaciones?|dormitorios?|beds?|bedrooms?|camas?)\b', lower))
+    has_baths = bool(re.search(r'\b(\d+)\s*(?:baños?|baths?|bathrooms?)\b', lower))
+    has_m2 = bool(re.search(r'\b(\d+(?:\.\d+)?)\s*(?:m²|m2|metros\s*cuadrados)\b', lower))
 
-    if has_images:
-        if has_type or has_intent or has_price:
-            return True
-    else:
-        if has_type and (has_intent or has_price):
-            return True
+    # Si tiene precio Y (tipo O habitaciones O baños O m²), es un anuncio
+    if has_price and (has_type or has_rooms or has_baths or has_m2):
+        return True
+
+    # Si tiene imágenes Y (tipo O habitaciones O baños O m²), es un anuncio
+    if has_images and (has_type or has_rooms or has_baths or has_m2):
+        return True
+
+    # Si tiene tipo Y (intención O habitaciones O baños O m²), es un anuncio
+    if has_type and (has_intent or has_rooms or has_baths or has_m2):
+        return True
 
     return False
 

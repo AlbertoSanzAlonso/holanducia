@@ -73,20 +73,16 @@ async def _ensure_fb_groups() -> None:
             logger.info("Migrando facebook_groups de TEXT[] a JSONB...")
             await conn.execute(text("ALTER TABLE user_settings ADD COLUMN facebook_groups_new JSONB"))
             await conn.execute(text("""
-                UPDATE user_settings AS u
+                UPDATE user_settings
                 SET facebook_groups_new = (
                     SELECT COALESCE(jsonb_agg(
-                        jsonb_build_object(
-                            'id', elem,
-                            'name', COALESCE(u.facebook_group_names->elem, '')::text,
-                            'enabled', true
-                        )
+                        jsonb_build_object('id', elem, 'name', '', 'enabled', true)
                     ), '[]'::jsonb)
-                    FROM unnest(u.facebook_groups) AS elem
+                    FROM unnest(facebook_groups) AS elem
                 )
             """))
             await conn.execute(text("ALTER TABLE user_settings DROP COLUMN facebook_groups"))
-            await conn.execute(text("ALTER TABLE user_settings DROP COLUMN facebook_group_names"))
+            await conn.execute(text("ALTER TABLE user_settings DROP COLUMN IF EXISTS facebook_group_names"))
             await conn.execute(text("ALTER TABLE user_settings RENAME COLUMN facebook_groups_new TO facebook_groups"))
             await conn.execute(text("""
                 ALTER TABLE user_settings ALTER COLUMN facebook_groups
