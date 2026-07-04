@@ -67,19 +67,34 @@ def build_facebook_graph(
 
     async def use_dom_posts(state: FacebookPipelineState) -> FacebookPipelineState:
         posts: List[FacebookPost] = []
-        for raw in state.get("dom_posts", []):
+        dom_urls = state.get("dom_urls") or []
+        dom_images = state.get("dom_images") or []
+        img_count = len(dom_images)
+        url_count = len(dom_urls)
+        for i, raw in enumerate(state.get("dom_posts", [])):
             normalized = _normalize_post(raw)
-            if normalized:
-                posts.append(normalized)
+            if not normalized:
+                continue
+            if not normalized.get("url") and url_count > 0:
+                idx = min(i, url_count - 1)
+                normalized["url"] = dom_urls[idx]
+            if not normalized.get("images") and img_count > 0:
+                imgs_per = max(1, img_count // max(len(state.get("dom_posts", [])), 1))
+                start = i * imgs_per
+                end = min(start + imgs_per, img_count)
+                if start < img_count:
+                    normalized["images"] = dom_images[start:end]
+            posts.append(normalized)
 
         with_url = sum(1 for p in posts if p.get("url"))
         with_img = sum(1 for p in posts if p.get("images"))
         method = "dom" if posts else None
         logger.info(
-            "LangGraph [use_dom_posts]: %s posts (%s con enlace, %s con foto)",
+            "LangGraph [use_dom_posts]: %s posts (%s con enlace, %s con foto, %s imgs asignadas)",
             len(posts),
             with_url,
             with_img,
+            len(dom_images),
         )
         return {"posts": posts, "extraction_method": method}
 
