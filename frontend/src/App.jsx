@@ -4,7 +4,7 @@ import {
   MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
   Eye, Mail, MoreHorizontal, ChevronRight, ChevronLeft, Menu, X,
   ShieldCheck, AlertTriangle, Trash2, CheckCircle2, FolderHeart, Tag,
-  BarChart3, Settings as SettingsIcon, LayoutGrid, ListPlus, Edit3, Bookmark, Images
+  BarChart3, Settings as SettingsIcon, LayoutGrid, ListPlus, Edit3, Bookmark, Images, Radar
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import PropertyIntelligenceModal from './PropertyIntelligenceModal'
@@ -619,24 +619,21 @@ function SidebarContent({ setView, setFilter, setSelectedCategoryId, setSelected
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-12 flex flex-col items-center">
-        <div className="relative mb-8 group">
-          <div className="w-24 h-24 bg-gradient-to-tr from-[#00acee] to-[#4f46e5] rounded-[2.5rem] flex items-center justify-center shadow-2xl transform rotate-6 group-hover:rotate-0 transition-transform duration-700">
-            <span className="text-4xl font-black text-white -rotate-6 group-hover:rotate-0 transition-transform">H.</span>
+      <div className="p-6 flex flex-col items-center">
+        <div className="relative mb-4 group">
+          <div className="w-14 h-14 bg-gradient-to-tr from-[#00acee] to-[#4f46e5] rounded-2xl flex items-center justify-center shadow-2xl transform rotate-6 group-hover:rotate-0 transition-transform duration-700">
+            <Radar size={24} className="text-white -rotate-6 group-hover:rotate-0 transition-transform" />
           </div>
-          <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-green-500 rounded-full border-4 border-[#0f172a] shadow-lg animate-pulse" />
         </div>
-        <h2 className="text-3xl font-black tracking-tight text-white">HolanducIA.</h2>
-        <p className="text-[#00acee] text-[9px] font-black mt-3 uppercase tracking-[0.4em] opacity-60">Real Estate Intelligence</p>
       </div>
 
-      <nav className="flex-1 px-8 mt-12 space-y-3 overflow-y-auto">
+      <nav className="flex-1 px-8 mt-2 space-y-3 overflow-y-auto">
         <p className="px-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-4">Radar Principal</p>
         <SidebarNavItem active={view === 'dashboard' && !selectedCategoryId && !selectedListId} icon={<LayoutGrid size={22} />} label="Todo el Mercado" onClick={handleMarket} />
         <SidebarNavItem active={view === 'stats'} icon={<BarChart3 size={22} />} label="Estadísticas" onClick={() => { setView('stats'); setSelectedCategoryId(null); setSelectedListId(null) }} />
         <SidebarNavItem active={view === 'settings'} icon={<SettingsIcon size={22} />} label="Configuración" onClick={() => setView('settings')} />
         
-        <div className="py-10 px-6"><div className="h-px bg-white/5 w-full" /></div>
+        <div className="py-4 px-6"><div className="h-px bg-white/5 w-full" /></div>
 
         <div className="flex items-center justify-between px-6 mb-4">
           <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Mis Listas</p>
