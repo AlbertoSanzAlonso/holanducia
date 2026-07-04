@@ -13,7 +13,8 @@ export default function SettingsView() {
     max_leads_per_portal: 10,
     mass_scrape_target: 500,
     mass_fb_scroll_steps: 100,
-    facebook_groups: []
+    facebook_groups: [],
+    facebook_group_names: {},
   })
   const [dbStats, setDbStats] = useState(null)
   const [statsLoading, setStatsLoading] = useState(false)
@@ -52,7 +53,8 @@ export default function SettingsView() {
       if (data) setSettings({
           ...data,
           cities: data.cities || [],
-          facebook_groups: data.facebook_groups || []
+          facebook_groups: data.facebook_groups || [],
+          facebook_group_names: data.facebook_group_names || {},
       })
     } finally {
       setLoading(false)
@@ -610,13 +612,16 @@ export default function SettingsView() {
                         Grupos Facebook ({selectedJob.groups.length})
                       </p>
                       <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                        {selectedJob.groups.map((g, i) => (
-                          <div key={i} className="p-2.5 bg-slate-50 rounded-xl">
-                            <p className="text-[10px] text-slate-500 font-medium truncate">
-                              facebook.com/groups/{g}
-                            </p>
-                          </div>
-                        ))}
+                        {selectedJob.groups.map((g, i) => {
+                          const name = settings.facebook_group_names?.[g]
+                          return (
+                            <div key={i} className="p-2.5 bg-slate-50 rounded-xl">
+                              <p className="text-[10px] text-slate-500 font-medium truncate">
+                                {name || `facebook.com/groups/${g}`}
+                              </p>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -718,20 +723,23 @@ export default function SettingsView() {
                 {settings.facebook_groups.length === 0 && (
                   <p className="text-slate-400 text-xs font-medium m-auto">No hay grupos añadidos</p>
                 )}
-                {settings.facebook_groups.map(id => (
-                  <div key={id} className="bg-white border border-slate-100 px-4 py-2 rounded-xl flex items-center gap-3 shadow-sm group hover:border-blue-200 transition-all animate-in zoom-in-90">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">ID: {id}</span>
-                      <span className="text-xs font-black text-slate-700">facebook.com/groups/...</span>
+                {settings.facebook_groups.map(id => {
+                  const name = settings.facebook_group_names?.[id]
+                  return (
+                    <div key={id} className="bg-white border border-slate-100 px-4 py-2 rounded-xl flex items-center gap-3 shadow-sm group hover:border-blue-200 transition-all animate-in zoom-in-90">
+                      <div className="flex flex-col">
+                        {name && <span className="text-xs font-black text-slate-700 truncate max-w-[180px]">{name}</span>}
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">ID: {id}</span>
+                      </div>
+                      <button 
+                        onClick={() => removeGroup(id)}
+                        className="text-slate-300 hover:text-red-500 transition-all"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => removeGroup(id)}
-                      className="text-slate-300 hover:text-red-500 transition-all"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               <button 

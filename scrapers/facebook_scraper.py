@@ -196,6 +196,32 @@ class FacebookScraper(BaseScraper):
             return f"https://www.facebook.com/groups/{url}"
         return url.replace("m.facebook.com", "www.facebook.com")
 
+    async def _extract_group_name(self, page, group_id: str) -> str:
+        try:
+            title = await page.title()
+            if title and "facebook" not in title.lower() and len(title) > 2:
+                return title.strip()
+            name_el = await page.query_selector("h1, [aria-label], title")
+            if name_el:
+                text = await name_el.inner_text()
+                if text and len(text.strip()) > 2:
+                    return text.strip()
+        except Exception:
+            pass
+        return ""
+
+    async def _save_group_name(self, group_id: str, name: str) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                api_url = os.getenv("API_URL", "http://api:8000").rstrip("/")
+                await client.patch(
+                    f"{api_url}/api/settings/group-names",
+                    json={"group_id": group_id, "name": name},
+                )
+            logger.info("Nombre del grupo guardado: %s → %s", group_id, name[:40])
+        except Exception as e:
+            logger.debug("No se pudo guardar nombre del grupo %s: %s", group_id, e)
+
     def _bootstrap_session_file(self) -> None:
         """Importa sesión Playwright desde env (evita login automatizado bloqueado por FB)."""
         if SESSION_FILE.exists():
@@ -281,6 +307,10 @@ class FacebookScraper(BaseScraper):
                 await page.wait_for_timeout(3000)
                 await self._dismiss_cookies(page)
                 await self._open_discussion_feed(page)
+
+                group_name = await self._extract_group_name(page, group_id)
+                if group_name:
+                    await self._save_group_name(group_id, group_name)
 
                 dom_posts, page_text, scroll_pos = await self._scroll_and_collect(page)
                 dom_posts = await self._host_images_for_posts(page, dom_posts)

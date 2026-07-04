@@ -64,6 +64,7 @@ CREATE TABLE user_settings (
     mass_fb_scroll_steps INTEGER DEFAULT 100,
     target_leads INTEGER DEFAULT 10,
     facebook_groups TEXT[] DEFAULT ARRAY['41757906864', '1018337428507491', '397742921612774'],
+    facebook_group_names JSONB DEFAULT '{}'::jsonb,
     portal_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT single_settings_row CHECK (id = 1)

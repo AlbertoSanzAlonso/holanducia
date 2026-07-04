@@ -328,6 +328,21 @@ async def update_settings(payload: SettingsUpdate, db: AsyncSession = Depends(ge
     return settings
 
 
+@router.patch("/settings/group-names")
+async def save_group_name(payload: dict, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserSettings).where(UserSettings.id == 1))
+    settings = result.scalar_one_or_none()
+    if not settings:
+        raise HTTPException(status_code=404, detail="Settings not found")
+
+    names = dict(settings.facebook_group_names or {})
+    names[payload["group_id"]] = payload["name"]
+    settings.facebook_group_names = names
+    settings.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.get("/scraping-requests/latest", response_model=Optional[ScrapingRequestOut])
 async def latest_scraping_request(db: AsyncSession = Depends(get_db)):
     result = await db.execute(

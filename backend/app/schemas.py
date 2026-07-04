@@ -106,6 +106,7 @@ class SettingsOut(BaseModel):
     mass_scrape_target: int = 500
     mass_fb_scroll_steps: int = 100
     facebook_groups: List[str] = Field(default_factory=list)
+    facebook_group_names: dict = Field(default_factory=dict)
     portal_urls: List[str] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 
@@ -121,6 +122,7 @@ class SettingsUpdate(BaseModel):
     mass_scrape_target: Optional[int] = None
     mass_fb_scroll_steps: Optional[int] = None
     facebook_groups: Optional[List[str]] = None
+    facebook_group_names: Optional[dict] = None
     portal_urls: Optional[List[str]] = None
 
 
