@@ -20,7 +20,7 @@ class Property(Base):
     __tablename__ = "properties"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    external_id: Mapped[Optional[str]] = mapped_column(String(64))
+    external_id: Mapped[Optional[str]] = mapped_column(String(200))
     url: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
     source: Mapped[Optional[str]] = mapped_column(String(100))
     title: Mapped[Optional[str]] = mapped_column(String(500))

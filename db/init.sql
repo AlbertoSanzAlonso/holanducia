@@ -9,7 +9,7 @@ CREATE TABLE categories (
 
 CREATE TABLE properties (
     id SERIAL PRIMARY KEY,
-    external_id VARCHAR(64),
+    external_id VARCHAR(200),
     url VARCHAR(500) NOT NULL UNIQUE,
     source VARCHAR(100),
     title VARCHAR(500),

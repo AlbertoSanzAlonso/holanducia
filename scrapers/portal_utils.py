@@ -153,11 +153,12 @@ def is_valid_listing_url(url: str) -> bool:
 
 
 def external_id_from_url(url: str) -> str:
-    path = urlparse(url).path.strip("/")
+    path = urlparse(url).strip("/")
     if not path:
         return url
     slug = path.split("/")[-1]
-    return slug or path.replace("/", "-")
+    result = slug or path.replace("/", "-")
+    return result[:120]  # DB varchar limit
 
 
 def extract_listing_urls(html: str = "", markdown: str = "", page_url: str = "") -> list[str]:
