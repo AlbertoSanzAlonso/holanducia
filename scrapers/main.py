@@ -103,13 +103,14 @@ async def main():
                     json={"status": "processing"},
                 )
 
-                await director.execute_mission(request=request)
+                total = await director.execute_mission(request=request)
 
                 await client.patch(
                     f"{api_url}/api/scraping-requests/{request_id}",
                     json={
                         "status": "completed",
                         "processed_at": datetime.now(timezone.utc).isoformat(),
+                        "error_message": f"Misión completada — {total} anuncios guardados o actualizados en BD",
                     },
                 )
                 logger.info("Mision cumplida: %s", request_id)

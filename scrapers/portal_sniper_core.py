@@ -59,7 +59,7 @@ async def discover_from_index(
         data.get("markdown") or "",
         index_url,
     )
-    logger.info("Índice %s → %s fichas detectadas", index_url[:60], len(listing_urls))
+    logger.info("Índice %s → %s URLs de fichas (pendientes de scrapear/guardar)", index_url[:60], len(listing_urls))
     return listing_urls[:MAX_PER_INDEX]
 
 

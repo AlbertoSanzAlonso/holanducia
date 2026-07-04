@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api, API_URL } from './api'
 import { 
   MapPin, Flame, User, LayoutDashboard, Filter, RefreshCw,
@@ -41,6 +41,8 @@ function App() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [errorField, setErrorField] = useState(null)
   const [securityBlock, setSecurityBlock] = useState(null)
+  const [scrapingNotice, setScrapingNotice] = useState(null)
+  const prevScrapingStatusRef = useRef(null)
 
   const fetchData = async () => {
     setLoading(true)
@@ -130,11 +132,36 @@ function App() {
   const checkScrapingStatus = async () => {
     try {
       const data = await api.getLatestScrapingRequest()
+      const prevStatus = prevScrapingStatusRef.current
+
       if (data?.status === 'security_block') {
         setSecurityBlock(data)
       } else {
         setSecurityBlock(null)
       }
+
+      if (data?.status === 'processing') {
+        setScrapingNotice({
+          type: 'processing',
+          message: data.error_message || `Scraping en curso (${data.source_name || 'worker'})…`,
+        })
+        if (prevStatus !== 'processing') {
+          fetchData()
+        }
+      } else if (prevStatus === 'processing' && data?.status === 'completed') {
+        await fetchData()
+        setScrapingNotice({
+          type: 'completed',
+          message: data.error_message || 'Scraping completado — lista actualizada.',
+        })
+        setTimeout(() => setScrapingNotice(null), 8000)
+      } else if (data?.status === 'completed' && prevStatus !== 'completed') {
+        setScrapingNotice(null)
+      } else if (!data || data.status === 'pending') {
+        setScrapingNotice(null)
+      }
+
+      prevScrapingStatusRef.current = data?.status ?? null
     } catch {
       setSecurityBlock(null)
     }
@@ -245,6 +272,41 @@ function App() {
                     <X size={24} />
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {scrapingNotice?.type === 'processing' && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-[#00acee] text-white px-6 lg:px-16 overflow-hidden shadow-lg z-40"
+            >
+              <div className="py-4 flex items-center gap-4">
+                <RefreshCw size={20} className="animate-spin shrink-0" />
+                <p className="text-sm font-bold">{scrapingNotice.message}</p>
+                <span className="text-[10px] font-black uppercase tracking-widest opacity-80 ml-auto hidden sm:inline">
+                  {properties.length} en BD · actualizando al terminar
+                </span>
+              </div>
+            </motion.div>
+          )}
+          {scrapingNotice?.type === 'completed' && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-emerald-600 text-white px-6 lg:px-16 overflow-hidden shadow-lg z-40"
+            >
+              <div className="py-4 flex items-center gap-4">
+                <CheckCircle2 size={20} className="shrink-0" />
+                <p className="text-sm font-bold">{scrapingNotice.message}</p>
+                <span className="text-[10px] font-black uppercase tracking-widest opacity-90 ml-auto">
+                  {properties.length} en BD · {filteredProperties.length} visibles con filtros actuales
+                </span>
               </div>
             </motion.div>
           )}
