@@ -229,12 +229,13 @@ class FacebookScraper(BaseScraper):
             return get_mass_fb_scroll_steps()
         return FB_SCROLL_STEPS
 
-    def __init__(self, group_url, limit=50):
+    def __init__(self, group_url, limit=50, group_names=None):
         super().__init__("Facebook", base_url="https://facebook.com")
         self.group_url = self._format_url(group_url)
         self.limit = limit
         self.user = os.getenv("FB_USER")
         self.password = os.getenv("FB_PASSWORD")
+        self.group_names = group_names or {}
 
     @staticmethod
     def _mask_email(email: str) -> str:
@@ -297,7 +298,9 @@ class FacebookScraper(BaseScraper):
     async def _persist_lead(self, ai_data: dict, _group_url: str) -> bool:
         return await self.connector.upsert_property(ai_data)
 
-    async def scrape_multiple(self, groups: list):
+    async def scrape_multiple(self, groups: list, group_names: dict = None):
+        if group_names:
+            self.group_names.update(group_names)
         self._bootstrap_session_file()
         logger.info(
             "Facebook scraper — FB_USER=%s, FB_PASSWORD=%s, session_file=%s",
@@ -353,7 +356,9 @@ class FacebookScraper(BaseScraper):
                     break
 
                 group_url = self._format_url(group_id)
-                logger.info("Entrando en grupo: %s", group_url)
+                custom_name = self.group_names.get(group_id)
+                display_name = f"{custom_name} [{group_id}]" if custom_name else group_url
+                logger.info("Entrando en grupo: %s", display_name)
 
                 await page.goto(group_url, wait_until="domcontentloaded", timeout=60000)
                 await page.wait_for_timeout(3000)

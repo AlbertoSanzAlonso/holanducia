@@ -23,6 +23,7 @@ export default function SettingsView() {
   const [saving, setSaving] = useState(false)
   const [showFBModal, setShowFBModal] = useState(false)
   const [newGroup, setNewGroup] = useState('')
+  const [newGroupName, setNewGroupName] = useState('')
 
   const AVAILABLE_PORTALS = ['Fotocasa', 'Habitaclia', 'Pisos.com', 'Facebook', 'Catastro']
 
@@ -78,12 +79,17 @@ export default function SettingsView() {
 
   const addGroup = () => {
     if (!newGroup) return
-    // Limpiar si pegan la URL completa
     const cleanId = newGroup.replace('https://www.facebook.com/groups/', '').replace('https://m.facebook.com/groups/', '').split('/')[0].split('?')[0]
     if (!settings.facebook_groups.includes(cleanId)) {
-      setSettings({ ...settings, facebook_groups: [...settings.facebook_groups, cleanId] })
+      const updatedGroups = [...settings.facebook_groups, cleanId]
+      const updatedNames = { ...settings.facebook_group_names }
+      if (newGroupName.trim()) {
+        updatedNames[cleanId] = newGroupName.trim()
+      }
+      setSettings({ ...settings, facebook_groups: updatedGroups, facebook_group_names: updatedNames })
     }
     setNewGroup('')
+    setNewGroupName('')
   }
 
   const removeGroup = (id) => {
@@ -693,11 +699,11 @@ export default function SettingsView() {
               </button>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div className="relative">
                 <input 
                   type="text"
-                  placeholder="ID o nombre del grupo..."
+                  placeholder="ID del grupo de Facebook..."
                   value={newGroup}
                   onChange={(e) => setNewGroup(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addGroup()}
@@ -709,6 +715,17 @@ export default function SettingsView() {
                 >
                   <Plus size={18} />
                 </button>
+              </div>
+              <div className="relative">
+                <input 
+                  type="text"
+                  placeholder="Nombre para identificar el grupo (opcional)..."
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addGroup()}
+                  className="w-full pl-6 pr-6 py-4 bg-slate-100 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none transition-all font-bold"
+                />
+                <p className="text-xs text-slate-400 mt-2 px-1">Dale un nombre para identificarlo fácilmente en los logs</p>
               </div>
 
               <div className="flex flex-wrap gap-2 min-h-[100px] p-4 bg-slate-50 rounded-3xl border border-dashed border-slate-200">

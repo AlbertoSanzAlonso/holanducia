@@ -114,6 +114,7 @@ class DirectorAgent:
             fb_scroll = int(os.getenv("FB_SCROLL_STEPS", "55"))
 
         fb_groups = _resolve_fb_groups(settings, res)
+        fb_group_names = settings.get("facebook_group_names", {}) or {}
         portal_urls = res.get("portal_urls") or build_portal_urls(settings)
 
         if isinstance(portal_urls, str):
@@ -192,8 +193,8 @@ class DirectorAgent:
                     import random
 
                     random.shuffle(fb_groups)
-                    scraper = FacebookScraper(fb_groups[0], limit=fb_share)
-                    total_captured += await scraper.scrape_multiple(fb_groups)
+                    scraper = FacebookScraper(fb_groups[0], limit=fb_share, group_names=fb_group_names)
+                    total_captured += await scraper.scrape_multiple(fb_groups, fb_group_names)
 
                 if portal_urls and portal_share > 0 and total_captured < quota:
                     backend = os.getenv("SNIPER_BACKEND", "crawl4ai").lower()
