@@ -711,6 +711,15 @@ class FacebookScraper(BaseScraper):
             key = (post.get("url") or post.get("text", ""))[:120]
             hosted = await host_facebook_images(images, key, page=page)
             if hosted:
+                from scrapers.property_image_storage import is_hosted_url
+                if not is_hosted_url(hosted[0]):
+                    cookies = await page.context.cookies()
+                    cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+                    from scrapers.property_image_storage import MAX_PROPERTY_IMAGES, FB_HEADERS, _download_http
+                    fb_headers = {**FB_HEADERS, "Cookie": cookie_str}
+                    downloaded = await _download_http(images[:MAX_PROPERTY_IMAGES], key, 0, fb_headers)
+                    if downloaded:
+                        hosted = downloaded
                 post["images"] = hosted
         return posts
 
@@ -718,9 +727,25 @@ class FacebookScraper(BaseScraper):
         if not image_urls:
             return []
         key = group_url.rstrip("/").split("/")[-1][:40] or "fb_group"
-        hosted = await host_facebook_images(image_urls, key, page=page)
-        return hosted or image_urls
-        return posts
+        from scrapers.property_image_storage import is_hosted_url
+        result = await host_facebook_images(image_urls, key, page=page)
+        if result and is_hosted_url(result[0]):
+            return result
+        logger.warning(
+            "host_facebook_images devolvió %s URLs no alojadas — reintentando con cookies...",
+            len(result or image_urls),
+        )
+        try:
+            cookies = await page.context.cookies()
+            cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+            from scrapers.property_image_storage import MAX_PROPERTY_IMAGES, FB_HEADERS, _download_http
+            fb_headers = {**FB_HEADERS, "Cookie": cookie_str}
+            downloaded = await _download_http(image_urls[:MAX_PROPERTY_IMAGES], key, 0, fb_headers)
+            if downloaded:
+                return downloaded
+        except Exception as e:
+            logger.warning("Fallback cookies falló: %s", e)
+        return result or image_urls
 
     async def _save_debug_artifacts(self, page, group_id):
         DEBUG_DIR.mkdir(parents=True, exist_ok=True)

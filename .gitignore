@@ -29,8 +29,12 @@ dist-ssr/
 .env
 .env.*
 !.env.example
-!**/.env.example
+!**/.env
+.venv-fb/
+scrapers/debug/.example
 
 # OS
 .DS_Store
 Thumbs.db
+.venv-fb/
+scrapers/debug/
