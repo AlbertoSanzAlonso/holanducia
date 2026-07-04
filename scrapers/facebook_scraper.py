@@ -43,21 +43,27 @@ EXTRACT_FB_ASSETS_JS = r"""() => {
 
     const imgs = new Set();
     document.querySelectorAll('img[src]').forEach(img => {
+        const w = img.naturalWidth || img.width || 0;
+        const h = img.naturalHeight || img.height || 0;
+        if (w > 0 && w < 100 && h > 0 && h < 100) return;
         let src = img.src || '';
         if (img.srcset) {
             const parts = img.srcset.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
             src = parts[parts.length - 1] || src;
         }
         const lower = src.toLowerCase();
-        if (!lower.includes('scontent') && !lower.includes('fbcdn')) return;
-        if (lower.includes('emoji') || lower.includes('static.xx') || lower.includes('rsrc.php')) return;
+        if (!lower.includes('scontent')) return;
+        if (lower.includes('emoji') || lower.includes('static') || lower.includes('rsrc.php')) return;
         if (lower.includes('profile') || lower.includes('safe_image')) return;
         imgs.add(src.split('&')[0]);
     });
 
     document.querySelectorAll('[style*="background-image"]').forEach(el => {
+        const w = el.offsetWidth || 0;
+        const h = el.offsetHeight || 0;
+        if (w > 0 && w < 100 && h > 0 && h < 100) return;
         const m = (el.getAttribute('style') || '').match(/url\(["']?(https:[^"')]+)/i);
-        if (m && (m[1].includes('scontent') || m[1].includes('fbcdn'))) {
+        if (m && m[1].includes('scontent')) {
             imgs.add(m[1].split('&')[0]);
         }
     });
@@ -128,7 +134,7 @@ EXTRACT_POSTS_JS = """() => {
         });
         el.querySelectorAll('[style*="background-image"]').forEach(el => {
             const m = (el.getAttribute('style') || '').match(/url\\(["']?(https:[^"')]+)/i);
-            if (m && (m[1].includes('scontent') || m[1].includes('fbcdn'))) {
+        if (m && m[1].includes('scontent')) {
                 imgs.push(m[1].split('&')[0]);
             }
         });
