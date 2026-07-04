@@ -33,6 +33,18 @@ export default function SettingsView() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    if (!selectedJob || selectedJob.status === 'completed' || selectedJob.status === 'cancelled') return
+    const poll = setInterval(async () => {
+      try {
+        const jobs = await api.listScrapingRequests()
+        const updated = jobs?.find(j => j.id === selectedJob.id)
+        if (updated) setSelectedJob(updated)
+      } catch {}
+    }, 5000)
+    return () => clearInterval(poll)
+  }, [selectedJob?.id, selectedJob?.status])
+
   const refreshStats = async () => {
     setStatsLoading(true)
     try {
@@ -550,6 +562,36 @@ export default function SettingsView() {
                     </div>
                   </div>
 
+                  {selectedJob.status === 'processing' && (() => {
+                    const msg = selectedJob.error_message || ''
+                    const match = msg.match(/(\d+)\/(\d+)\s*en\s*BD/)
+                    const current = match ? parseInt(match[1]) : null
+                    const target = match ? parseInt(match[2]) : selectedJob.target_leads
+                    const pct = current && target ? Math.min(100, Math.round((current / target) * 100)) : null
+
+                    return (
+                      <div className="p-4 bg-blue-50 rounded-2xl border border-blue-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] uppercase tracking-widest font-black text-blue-600">Progreso en vivo</p>
+                          {pct !== null && (
+                            <p className="text-sm font-black text-blue-700">{current}/{target}</p>
+                          )}
+                        </div>
+                        {pct !== null && (
+                          <div className="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 rounded-full transition-all duration-700"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
+                        {msg && (
+                          <p className="text-[10px] text-blue-700 font-medium leading-relaxed">{msg}</p>
+                        )}
+                      </div>
+                    )
+                  })()}
+
                   {selectedJob.processed_at && (
                     <div className="p-4 bg-slate-50 rounded-2xl">
                       <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1">
@@ -601,7 +643,7 @@ export default function SettingsView() {
                     </div>
                   )}
 
-                  {selectedJob.error_message && (
+                  {selectedJob.error_message && selectedJob.status !== 'processing' && (
                     <div className={`p-4 rounded-2xl ${selectedJob.status === 'completed' ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
                       <p className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-1">Resultado</p>
                       <p className="text-xs font-medium text-slate-700">{selectedJob.error_message}</p>
