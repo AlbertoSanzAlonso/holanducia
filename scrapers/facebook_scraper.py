@@ -17,11 +17,12 @@ DEBUG_DIR = Path(__file__).parent / "debug"
 SESSION_FILE = DEBUG_DIR / "fb_session.json"
 
 EXPAND_POSTS_JS = """() => {
-    const buttons = document.querySelectorAll('div[role="button"]');
+    const expandTexts = ['see more', 'ver más', 'see all', 'more', 'ver todas', 'ver todo', 'mostrar más', 'show more'];
+    const buttons = document.querySelectorAll('div[role="button"], span[role="button"], a[role="button"]');
     let clicked = 0;
     buttons.forEach(btn => {
         const t = (btn.innerText || '').trim().toLowerCase();
-        if (t === 'see more' || t === 'ver más' || t === 'see all' || t === 'more') {
+        if (expandTexts.some(expand => t === expand || t.includes(expand))) {
             btn.click();
             clicked++;
         }
@@ -605,10 +606,12 @@ class FacebookScraper(BaseScraper):
                 break
 
             try:
-                await page.evaluate(EXPAND_POSTS_JS)
-                await page.wait_for_timeout(200)
-            except Exception:
-                pass
+                expanded = await page.evaluate(EXPAND_POSTS_JS)
+                if expanded > 0:
+                    logger.debug("Scroll paso %s: %s botones 'Ver más' clicados", step, expanded)
+                await page.wait_for_timeout(500)
+            except Exception as e:
+                logger.debug("Error expandiendo posts: %s", e)
 
             fragments = await page.evaluate(EXTRACT_POSTS_JS)
             for frag in fragments:

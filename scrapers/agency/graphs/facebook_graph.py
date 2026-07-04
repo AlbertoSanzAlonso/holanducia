@@ -134,20 +134,17 @@ def build_facebook_graph(
             text = _post_text(p)
             if is_property_listing_text(text):
                 candidates.append(p)
-            elif len(rejected_samples) < 3:
-                rejected_samples.append(text[:100].replace("\n", " "))
+            elif len(rejected_samples) < 5:
+                rejected_samples.append(text[:200].replace("\n", " "))
 
         logger.info(
             "LangGraph [filter]: %s candidatos inmobiliarios de %s posts",
             len(candidates),
             len(posts),
         )
-        if not candidates and posts:
+        if rejected_samples:
             for i, s in enumerate(rejected_samples):
-                logger.warning("Post sin keywords #%s: %s…", i + 1, s)
-        elif len(candidates) < 5 and posts:
-            for s in rejected_samples:
-                logger.debug("Muestra post sin keywords: %s…", s)
+                logger.info("Muestra post rechazado #%s: %s…", i + 1, s)
 
         stats = dict(state.get("stats") or {})
         stats.update({"posts_total": len(posts), "keyword_candidates": len(candidates)})
