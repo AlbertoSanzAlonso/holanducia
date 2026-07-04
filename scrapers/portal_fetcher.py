@@ -210,6 +210,7 @@ async def fetch_portal_page(
     """
     Intenta cargar una página de portal. Si Crawl4AI cae en Akamai/Imperva,
     prueba Firecrawl (solo índices por defecto) y luego Playwright stealth.
+    En fichas donde Playwright también falla, Firecrawl como último recurso.
     """
     index_only = os.getenv("FIRECRAWL_INDEX_ONLY", "true").lower() == "true"
     allow_firecrawl = (not index_only) or is_portal_index_url(url)
@@ -225,7 +226,11 @@ async def fetch_portal_page(
             "Firecrawl reservado a índices (FIRECRAWL_INDEX_ONLY) — Playwright en ficha: %s",
             url[:70],
         )
-        return await fetch_with_playwright(url)
+        page = await fetch_with_playwright(url)
+        if page:
+            return page
+        logger.warning("Playwright falló en ficha — Firecrawl último recurso: %s", url[:70])
+        return await fetch_with_firecrawl(url)
 
     if page:
         logger.warning("Crawl4AI devolvió página WAF — probando Firecrawl: %s", url[:70])
