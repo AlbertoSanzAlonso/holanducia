@@ -184,14 +184,6 @@ export default function SettingsView() {
     fetchJobs()
     refreshStats()
   }
-    try {
-      await api.cancelScrapingRequest(id)
-    } catch {
-      // 400 = ya completada/cancelada, solo refrescar
-    }
-    fetchJobs()
-    refreshStats()
-  }
 
   const statusIcon = (status) => {
     switch (status) {
