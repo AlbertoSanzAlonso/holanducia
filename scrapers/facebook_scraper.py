@@ -29,6 +29,42 @@ EXPAND_POSTS_JS = """() => {
     return clicked;
 }"""
 
+EXTRACT_FB_ASSETS_JS = r"""() => {
+    const postUrls = new Set();
+    const urlPatterns = ['/posts/', '/permalink/', 'story_fbid', 'multi_permalinks', '/photo/', 'fbid='];
+    document.querySelectorAll('a[href]').forEach(a => {
+        try {
+            const u = new URL(a.getAttribute('href'), location.href);
+            if (u.hostname.includes('facebook.com') && urlPatterns.some(p => u.href.toLowerCase().includes(p))) {
+                postUrls.add(u.href.split('#')[0].split('?')[0].replace(/\/$/, ''));
+            }
+        } catch(e) {}
+    });
+
+    const imgs = new Set();
+    document.querySelectorAll('img[src]').forEach(img => {
+        let src = img.src || '';
+        if (img.srcset) {
+            const parts = img.srcset.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+            src = parts[parts.length - 1] || src;
+        }
+        const lower = src.toLowerCase();
+        if (!lower.includes('scontent') && !lower.includes('fbcdn')) return;
+        if (lower.includes('emoji') || lower.includes('static.xx') || lower.includes('rsrc.php')) return;
+        if (lower.includes('profile') || lower.includes('safe_image')) return;
+        imgs.add(src.split('&')[0]);
+    });
+
+    document.querySelectorAll('[style*="background-image"]').forEach(el => {
+        const m = (el.getAttribute('style') || '').match(/url\(["']?(https:[^"')]+)/i);
+        if (m && (m[1].includes('scontent') || m[1].includes('fbcdn'))) {
+            imgs.add(m[1].split('&')[0]);
+        }
+    });
+
+    return { urls: Array.from(postUrls), images: Array.from(imgs) };
+}"""
+
 EXTRACT_POSTS_JS = """() => {
     const posts = [];
     const seen = new Set();
@@ -325,7 +361,7 @@ class FacebookScraper(BaseScraper):
                 if group_name:
                     await self._save_group_name(group_id, group_name)
 
-                dom_posts, page_text, scroll_pos = await self._scroll_and_collect(page)
+                dom_posts, page_text, scroll_pos, dom_urls, dom_images = await self._scroll_and_collect(page)
                 dom_posts = await self._host_images_for_posts(page, dom_posts)
 
                 if not dom_posts:
@@ -336,6 +372,8 @@ class FacebookScraper(BaseScraper):
                     group_url=group_url,
                     page_text=page_text,
                     dom_posts=dom_posts,
+                    dom_urls=dom_urls,
+                    dom_images=dom_images,
                     limit=remaining,
                     connector=self.connector,
                     persist_lead=self._persist_lead,
@@ -641,12 +679,22 @@ class FacebookScraper(BaseScraper):
             await page.wait_for_timeout(1000 if stagnant else 800)
 
         page_text = await page.evaluate("() => document.body.innerText || ''")
+        fb_assets = await page.evaluate(EXTRACT_FB_ASSETS_JS)
+        dom_urls = fb_assets.get("urls") or []
+        dom_images = fb_assets.get("images") or []
+
         posts = list(posts_by_key.values())
         if posts and len(posts) <= 5:
             for i, p in enumerate(posts[:3]):
                 preview = (p.get("text") or "")[:120].replace("\n", " ")
                 logger.info("Post DOM #%s preview: %s…", i + 1, preview)
-        return posts, page_text, last_scroll
+        else:
+            logger.info(
+                "DOM assets extraídos: %s URLs de post, %s imágenes FB",
+                len(dom_urls),
+                len(dom_images),
+            )
+        return posts, page_text, last_scroll, dom_urls, dom_images
 
     async def _host_images_for_posts(self, page, posts: list) -> list:
         for post in posts:

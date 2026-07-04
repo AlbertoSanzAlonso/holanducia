@@ -18,6 +18,8 @@ class FacebookPipelineState(TypedDict, total=False):
     group_url: str
     page_text: str
     dom_posts: List[Union[str, FacebookPost]]
+    dom_urls: List[str]
+    dom_images: List[str]
     posts: List[FacebookPost]
     extraction_method: Optional[str]
     diagnosis: Optional[Dict[str, Any]]
@@ -93,11 +95,24 @@ def build_facebook_graph(
     async def ai_extract(state: FacebookPipelineState) -> FacebookPipelineState:
         raw_posts = await scout.extract_posts_from_text(state.get("page_text", ""), "Facebook")
         posts = []
-        for raw in raw_posts:
+        dom_urls = state.get("dom_urls") or []
+        dom_images = state.get("dom_images") or []
+        for i, raw in enumerate(raw_posts):
             normalized = _normalize_post(raw)
-            if normalized:
-                posts.append(normalized)
-        logger.info("LangGraph [ai_extract]: Scout extrajo %s posts vía IA", len(posts))
+            if not normalized:
+                continue
+            if not normalized.get("url") and i < len(dom_urls):
+                normalized["url"] = dom_urls[i]
+            if not normalized.get("images") and dom_images:
+                normalized["images"] = list(dom_images)
+            posts.append(normalized)
+
+        with_url = sum(1 for p in posts if p.get("url"))
+        with_img = sum(1 for p in posts if p.get("images"))
+        logger.info(
+            "LangGraph [ai_extract]: Scout extrajo %s posts vía IA (%s con enlace, %s con foto)",
+            len(posts), with_url, with_img,
+        )
         return {"posts": posts, "extraction_method": "ai", "ai_attempted": True}
 
     async def filter_candidates(state: FacebookPipelineState) -> FacebookPipelineState:
@@ -190,17 +205,21 @@ async def run_facebook_pipeline(
     group_url: str,
     page_text: str,
     dom_posts: List[Union[str, FacebookPost]],
-    limit: int,
-    connector: DatabaseConnector,
-    persist_lead: PersistFn,
-    is_already_scraped: DedupCheckFn,
-    mark_as_scraped: MarkScrapedFn,
+    dom_urls: Optional[List[str]] = None,
+    dom_images: Optional[List[str]] = None,
+    limit: int = 50,
+    connector: DatabaseConnector = None,
+    persist_lead: PersistFn = None,
+    is_already_scraped: DedupCheckFn = None,
+    mark_as_scraped: MarkScrapedFn = None,
 ) -> FacebookPipelineState:
     graph = build_facebook_graph(connector, persist_lead, is_already_scraped, mark_as_scraped)
     initial: FacebookPipelineState = {
         "group_url": group_url,
         "page_text": page_text,
         "dom_posts": dom_posts,
+        "dom_urls": dom_urls or [],
+        "dom_images": dom_images or [],
         "posts": [],
         "candidates": [],
         "saved_count": 0,
