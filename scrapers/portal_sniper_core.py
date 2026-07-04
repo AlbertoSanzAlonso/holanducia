@@ -106,7 +106,8 @@ async def build_detail_url_queue(
 
     if skipped_known:
         logger.info(
-            "%s fichas omitidas (ya en BD/Redis) — cola nueva: %s (cuota %s)",
+            "%s fichas omitidas (Redis/cache) — en cola: %s (cuota %s). "
+            "Las ya en BD se re-verifican si PORTAL_UPDATE_EXISTING=true",
             skipped_known,
             len(detail_urls),
             limit,

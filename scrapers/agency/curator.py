@@ -119,27 +119,18 @@ class CuratorAgent:
             }
 
         if url in (self._known_urls or set()):
+            if is_listing_detail_url(url):
+                return {
+                    "action": CurateAction.UPDATE.value,
+                    "raw_lead": {"url": url, "dedup_key": dedup_key},
+                    "reason": "db_url_refresh",
+                }
             if is_sync_mode():
                 return {
                     "action": CurateAction.UPDATE.value,
                     "raw_lead": {"url": url, "dedup_key": dedup_key},
                     "reason": "sync_update_existing",
                 }
-            if is_listing_detail_url(url):
-                existing = await self.connector.get_property_by_url(url)
-                if existing and (
-                    is_card_snippet(existing.get("title"), existing.get("description"))
-                    or (
-                        float(existing.get("price") or 0) > 0
-                        and not existing.get("size_m2")
-                        and not existing.get("rooms")
-                    )
-                ):
-                    return {
-                        "action": CurateAction.UPDATE.value,
-                        "raw_lead": {"url": url, "dedup_key": dedup_key},
-                        "reason": "portal_rescrape_incomplete",
-                    }
             return {
                 "action": CurateAction.DUPLICATE.value,
                 "raw_lead": {"url": url, "dedup_key": dedup_key},

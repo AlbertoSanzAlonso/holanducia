@@ -101,7 +101,13 @@ class BaseScraper(ABC):
             return False
 
     async def is_already_scraped(self, url: str) -> bool:
-        """Evita re-scrape (y gasto Firecrawl) si la ficha ya está en BD o Redis."""
+        """
+        True = omitir fetch de esta ficha.
+
+        Orden: ¿existe en BD? → si es nueva, scrapear (Crawl4AI/Playwright, sin Firecrawl en ficha).
+        Si existe y PORTAL_UPDATE_EXISTING=true, re-scrapear y comparar content_hash al guardar.
+        Firecrawl solo entra vía portal_fetcher cuando hay WAF (y solo en índices por defecto).
+        """
         if is_sync_mode():
             return False
         if is_portal_index_url(url):
@@ -110,9 +116,14 @@ class BaseScraper(ABC):
             logger.info("♻️ Re-scrape ficha incompleta: %s", url[:70])
             return False
 
-        if is_listing_detail_url(url) and await self.is_in_db(url):
+        in_db = is_listing_detail_url(url) and await self.is_in_db(url)
+
+        if in_db:
+            if os.getenv("PORTAL_UPDATE_EXISTING", "true").lower() == "true":
+                logger.debug("♻️ En BD — re-verificar cambios (sin Firecrawl en ficha): %s", url[:70])
+                return False
             await self.mark_as_scraped(url)
-            logger.info("⏭️ Ya en BD — sin fetch: %s", url[:70])
+            logger.info("⏭️ En BD, PORTAL_UPDATE_EXISTING=false — omitiendo: %s", url[:70])
             return True
 
         if not self.redis:

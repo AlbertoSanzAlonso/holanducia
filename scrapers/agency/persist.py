@@ -72,6 +72,7 @@ async def persist_supervised_lead(
                 session.record_seen(url)
                 session.bump("unchanged")
             await mark_as_scraped(url)
+            logger.info("Sin cambios en BD (mismo hash): %s", lead.get("title") or url[:60])
             return False, "unchanged", decision["reason"]
 
         if await connector.upsert_property_with_embedding(lead):
