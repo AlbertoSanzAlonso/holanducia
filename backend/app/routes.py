@@ -243,6 +243,7 @@ async def sync_finalize(
         seen_urls=set(payload.seen_urls),
         sources=payload.sources,
         stats=payload.stats,
+        deactivate_missing=payload.deactivate_missing,
     )
     return SyncFinalizeResponse(
         deactivated=result.get("deactivated", 0),
@@ -261,6 +262,8 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         db.add(settings)
         await db.commit()
         await db.refresh(settings)
+    if not settings.cities:
+        settings.cities = ["malaga"]
     return settings
 
 

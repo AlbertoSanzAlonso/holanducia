@@ -178,11 +178,17 @@ class DatabaseConnector:
         seen_urls: List[str],
         sources: List[str],
         stats: Dict[str, Any],
+        deactivate_missing: bool = True,
     ) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{self.api_url}/api/sync/{sync_run_id}/finalize",
-                json={"seen_urls": seen_urls, "sources": sources, "stats": stats},
+                json={
+                    "seen_urls": seen_urls,
+                    "sources": sources,
+                    "stats": stats,
+                    "deactivate_missing": deactivate_missing,
+                },
             )
             response.raise_for_status()
             return response.json()

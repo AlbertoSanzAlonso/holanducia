@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from scrapers.agency.hunter import HunterAgent
 from scrapers.db_connector import DatabaseConnector, build_portal_urls
 from scrapers.facebook_scraper import FacebookScraper
-from scrapers.portal_utils import prioritize_portal_urls
+from scrapers.portal_utils import portal_host, prioritize_portal_urls, interleave_portal_urls
 from scrapers.sync_context import SyncSession, mass_fb_scroll_steps, mass_mode, sync_mode, sync_session
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,8 @@ class DirectorAgent:
         if fb_groups:
             sources.append("Facebook")
         for url in portal_urls:
-            host = url.split("//")[-1].split("/")[0].replace("www.", "")
-            if host and host not in sources:
+            host = portal_host(url)
+            if host != "unknown" and host not in sources:
                 sources.append(host)
         return sources
 
@@ -96,11 +96,17 @@ class DirectorAgent:
             fb_groups = [str(fb_groups)] if fb_groups else []
 
         discovered = await self._discover_listing_urls(settings)
-        if discovered:
-            portal_urls = list(dict.fromkeys(portal_urls + discovered))
-            logger.info("Director: %s urls de portales (listados + Hunter)", len(portal_urls))
+        index_urls = build_portal_urls(settings)
+        portal_urls = list(dict.fromkeys(index_urls + portal_urls + discovered))
+        if discovered or index_urls:
+            logger.info(
+                "Director: %s urls de portales (%s índice, %s Hunter)",
+                len(portal_urls),
+                len(index_urls),
+                len(discovered),
+            )
 
-        portal_urls = prioritize_portal_urls(portal_urls)
+        portal_urls = interleave_portal_urls(prioritize_portal_urls(portal_urls))
         sources = self._collect_sources(fb_groups, portal_urls)
 
         session: SyncSession | None = None
@@ -164,11 +170,14 @@ class DirectorAgent:
                     break
         finally:
             if session:
+                # mass_scrape acumula oportunidades; solo daily_sync reconcilia bajas
+                reconcile = res.get("source_name") == "daily_sync"
                 result = await self.db.finalize_sync_run(
                     session.sync_run_id,
                     seen_urls=list(session.seen_urls),
                     sources=session.sources,
                     stats=session.stats,
+                    deactivate_missing=reconcile,
                 )
                 logger.info(
                     "Scraping masivo completado — creados=%s actualizados=%s sin_cambios=%s bajas=%s",

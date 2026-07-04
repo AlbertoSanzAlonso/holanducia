@@ -57,12 +57,13 @@ class SyncService:
         seen_urls: set[str],
         sources: list[str],
         stats: dict,
+        deactivate_missing: bool = True,
     ) -> dict:
         now = datetime.now(timezone.utc)
         deactivated = 0
         min_coverage = float(os.getenv("SYNC_DEACTIVATE_MIN_COVERAGE", "0.25"))
 
-        if seen_urls and sources:
+        if deactivate_missing and seen_urls and sources:
             for source in sources:
                 active_result = await self.db.execute(
                     select(Property).where(

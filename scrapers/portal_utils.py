@@ -4,6 +4,15 @@ from urllib.parse import urlparse, urljoin
 from scrapers.image_utils import is_portal_index_url
 
 PORTAL_HOSTS = ("pisos.com", "fotocasa.es", "habitaclia.com", "idealista.com")
+MAX_DETAIL_URLS_PER_PORTAL = 50
+
+
+def portal_host(url: str) -> str:
+    host = urlparse(normalize_portal_url(url) or url).netloc.lower().replace("www.", "")
+    for portal in PORTAL_HOSTS:
+        if portal in host:
+            return portal
+    return host or "unknown"
 
 DETAIL_PATH_HINTS = (
     "/comprar/",
@@ -130,9 +139,40 @@ def resolve_lead_identity(lead: dict, base_url: str) -> tuple[str, str]:
 
 
 def prioritize_portal_urls(urls: list[str]) -> list[str]:
-    detail = [u for u in urls if is_listing_detail_url(u)]
-    index = [u for u in urls if is_portal_index_url(u)]
-    other = [u for u in urls if u not in detail and u not in index]
-    if detail:
-        return list(dict.fromkeys(detail))
-    return list(dict.fromkeys(index + other))
+    """Por portal: fichas primero (con límite), si no hay fichas usa la página índice."""
+    by_host: dict[str, list[str]] = {}
+    for url in urls:
+        by_host.setdefault(portal_host(url), []).append(url)
+
+    ordered: list[str] = []
+    for host_urls in by_host.values():
+        detail = [u for u in host_urls if is_listing_detail_url(u)]
+        index = [u for u in host_urls if is_portal_index_url(u)]
+        other = [u for u in host_urls if u not in detail and u not in index]
+
+        if detail:
+            ordered.extend(dict.fromkeys(detail[:MAX_DETAIL_URLS_PER_PORTAL]))
+        if index:
+            ordered.extend(dict.fromkeys(index))
+        if not detail and not index:
+            ordered.extend(dict.fromkeys(other))
+
+    return list(dict.fromkeys(ordered))
+
+
+def interleave_portal_urls(urls: list[str]) -> list[str]:
+    """Alterna URLs entre portales para que ninguno monopolice la cuota."""
+    buckets: dict[str, list[str]] = {}
+    for url in urls:
+        buckets.setdefault(portal_host(url), []).append(url)
+
+    if len(buckets) <= 1:
+        return urls
+
+    hosts = list(buckets.keys())
+    result: list[str] = []
+    while any(buckets[h] for h in hosts):
+        for host in hosts:
+            if buckets[host]:
+                result.append(buckets[host].pop(0))
+    return result

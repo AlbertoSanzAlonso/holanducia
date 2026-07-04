@@ -186,6 +186,7 @@ class SyncFinalizeRequest(BaseModel):
     seen_urls: List[str]
     sources: List[str] = Field(default_factory=list)
     stats: dict = Field(default_factory=dict)
+    deactivate_missing: bool = True
 
 
 class SyncFinalizeResponse(BaseModel):
