@@ -11,7 +11,7 @@ from scrapers.db_connector import DatabaseConnector
 from scrapers.sync_context import is_sync_mode
 from scrapers.image_utils import is_portal_index_url
 from scrapers.portal_sniper_core import is_incomplete_portal_record
-from scrapers.portal_utils import is_listing_detail_url
+from scrapers.portal_utils import is_listing_detail_url, normalize_portal_url
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -63,6 +63,29 @@ class BaseScraper(ABC):
             self.redis = None
             logger.warning(f"❌ Redis not available, deduplication disabled: {e}")
 
+        self._known_db_urls: Optional[set[str]] = None
+
+    def reset_db_url_cache(self) -> None:
+        self._known_db_urls = None
+
+    async def load_db_url_index(self) -> set[str]:
+        if self._known_db_urls is None:
+            urls, _ = await self.connector.get_property_index()
+            self._known_db_urls = {
+                (normalize_portal_url(u) or u).rstrip("/") for u in urls if u
+            }
+            logger.info("Índice BD cargado — %s URLs conocidas", len(self._known_db_urls))
+        return self._known_db_urls
+
+    def _normalize_url_key(self, url: str) -> str:
+        return (normalize_portal_url(url) or url).rstrip("/")
+
+    async def is_in_db(self, url: str) -> bool:
+        if not is_listing_detail_url(url):
+            return False
+        known = await self.load_db_url_index()
+        return self._normalize_url_key(url) in known
+
     @abstractmethod
     async def scrape(self):
         pass
@@ -78,7 +101,7 @@ class BaseScraper(ABC):
             return False
 
     async def is_already_scraped(self, url: str) -> bool:
-        """Evita re-scrape salvo sync o fichas incompletas en BD."""
+        """Evita re-scrape (y gasto Firecrawl) si la ficha ya está en BD o Redis."""
         if is_sync_mode():
             return False
         if is_portal_index_url(url):
@@ -86,11 +109,20 @@ class BaseScraper(ABC):
         if await self._needs_portal_rescrape(url):
             logger.info("♻️ Re-scrape ficha incompleta: %s", url[:70])
             return False
+
+        if is_listing_detail_url(url) and await self.is_in_db(url):
+            await self.mark_as_scraped(url)
+            logger.info("⏭️ Ya en BD — sin fetch: %s", url[:70])
+            return True
+
         if not self.redis:
             return False
 
         try:
-            if self.redis.sismember("holanducia:processed_urls", url):
+            key = self._normalize_url_key(url)
+            if self.redis.sismember("holanducia:processed_urls", url) or self.redis.sismember(
+                "holanducia:processed_urls", key
+            ):
                 prop = await self.connector.get_property_by_url(url)
                 if not prop:
                     logger.info("Redis obsoleto (sin BD) — re-scrape: %s", url[:70])
@@ -109,14 +141,17 @@ class BaseScraper(ABC):
             return
 
         try:
+            key = self._normalize_url_key(url)
             self.redis.sadd("holanducia:processed_urls", url)
+            if key != url:
+                self.redis.sadd("holanducia:processed_urls", key)
         except Exception as e:
             logger.warning(f"Could not save URL to Redis: {e}")
 
     async def scrape_with_crawl4ai(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         skip_cache = is_portal_index_url(url) or await self._needs_portal_rescrape(url)
         if not skip_cache and await self.is_already_scraped(url):
-            logger.info(f"⏭️ Skipping (Already in Redis): {url}")
+            logger.info("⏭️ Omitiendo fetch — ya procesado: %s", url[:70])
             return None
 
         if schema:
@@ -147,7 +182,7 @@ class BaseScraper(ABC):
     async def scrape_with_firecrawl(self, url: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         skip_cache = is_portal_index_url(url) or await self._needs_portal_rescrape(url)
         if not skip_cache and await self.is_already_scraped(url):
-            logger.info(f"⏭️ Skipping (Already in Redis): {url}")
+            logger.info("⏭️ Omitiendo fetch — ya procesado: %s", url[:70])
             return None
 
         logger.info(f"🔥 Deep Intelligence Scan (Spending Credit): {url}")

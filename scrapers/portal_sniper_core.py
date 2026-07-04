@@ -72,18 +72,45 @@ async def build_detail_url_queue(
     urls: List[str],
     fetch_page: Callable[[str], Awaitable[Optional[Dict[str, Any]]]],
     limit: int,
+    should_skip: Optional[Callable[[str], Awaitable[bool]]] = None,
 ) -> List[str]:
     index_urls, detail_urls = collect_detail_urls(urls)
+    skipped_known = 0
+
+    def _track_skip(u: str) -> bool:
+        nonlocal skipped_known
+        skipped_known += 1
+        return True
 
     for index_url in index_urls:
         if len(detail_urls) >= limit:
             break
         discovered = await discover_from_index(index_url, fetch_page)
         for u in discovered:
+            if should_skip and await should_skip(u):
+                _track_skip(u)
+                continue
             if u not in detail_urls:
                 detail_urls.append(u)
             if len(detail_urls) >= limit:
                 break
+
+    if should_skip:
+        filtered: List[str] = []
+        for u in detail_urls:
+            if await should_skip(u):
+                _track_skip(u)
+                continue
+            filtered.append(u)
+        detail_urls = filtered
+
+    if skipped_known:
+        logger.info(
+            "%s fichas omitidas (ya en BD/Redis) — cola nueva: %s (cuota %s)",
+            skipped_known,
+            len(detail_urls),
+            limit,
+        )
 
     return detail_urls[:limit]
 

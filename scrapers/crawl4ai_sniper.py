@@ -29,8 +29,16 @@ class Crawl4AISniper(BaseScraper):
         if not urls:
             return 0
 
-        to_scrape = await build_detail_url_queue(urls, self.scrape_with_crawl4ai, self.limit)
+        await self.load_db_url_index()
+
+        to_scrape = await build_detail_url_queue(
+            urls,
+            self.scrape_with_crawl4ai,
+            self.limit,
+            should_skip=self.is_already_scraped,
+        )
         if not to_scrape:
+            logger.info("Sin fichas nuevas tras filtrar BD/Redis — 0 créditos Firecrawl en detalle")
             return 0
 
         logger.info(

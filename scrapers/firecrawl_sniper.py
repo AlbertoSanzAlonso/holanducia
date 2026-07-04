@@ -60,8 +60,16 @@ class FirecrawlSniper(BaseScraper):
         if not urls:
             return 0
 
-        to_scrape = await build_detail_url_queue(urls, self._fetch_firecrawl, self.limit)
+        await self.load_db_url_index()
+
+        to_scrape = await build_detail_url_queue(
+            urls,
+            self._fetch_firecrawl,
+            self.limit,
+            should_skip=self.is_already_scraped,
+        )
         if not to_scrape:
+            logger.info("Sin fichas nuevas tras filtrar BD/Redis")
             return 0
 
         logger.info("Sniper Firecrawl: %s fichas — guardado incremental", len(to_scrape))

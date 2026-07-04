@@ -6,7 +6,8 @@ from typing import Any, Callable, Dict, Optional
 import httpx
 from playwright.async_api import async_playwright
 
-from scrapers.image_utils import extract_image_urls
+from scrapers.image_utils import extract_image_urls, is_portal_index_url
+from scrapers.portal_utils import normalize_portal_url
 
 logger = logging.getLogger(__name__)
 
@@ -146,11 +147,21 @@ async def fetch_portal_page(
 ) -> Optional[Dict[str, Any]]:
     """
     Intenta cargar una página de portal. Si Crawl4AI cae en Akamai/Imperva,
-    prueba Firecrawl y luego Playwright stealth.
+    prueba Firecrawl (solo índices por defecto) y luego Playwright stealth.
     """
+    index_only = os.getenv("FIRECRAWL_INDEX_ONLY", "true").lower() == "true"
+    allow_firecrawl = (not index_only) or is_portal_index_url(url)
+
     page = await crawl4ai_fetch(url)
     if page and not is_antibot_content(markdown=page.get("markdown", ""), html=page.get("html", "")):
         return page
+
+    if not allow_firecrawl:
+        logger.info(
+            "Firecrawl reservado a índices (FIRECRAWL_INDEX_ONLY) — Playwright en ficha: %s",
+            url[:70],
+        )
+        return await fetch_with_playwright(url)
 
     if page:
         logger.warning("Crawl4AI devolvió página WAF — probando Firecrawl: %s", url[:70])
